@@ -4,5 +4,3 @@ dist/
 Thumbs.db
 *.log
 .netlify/
-Soliloquy/node_modules/
-Soliloquy/dist/
