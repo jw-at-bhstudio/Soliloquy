@@ -195,6 +195,72 @@ test('FloatingControls keeps mirror actions while separating secondary control g
   assert.match(source, />\s*导入与示例\s*</);
   assert.match(source, />\s*镜像参数\s*</);
   assert.match(source, />\s*试听与导出\s*</);
+  assert.match(source, />\s*绝对频率\s*</);
+  assert.doesNotMatch(source, />\s*半径模式\s*</);
+  assert.doesNotMatch(source, />\s*相对谐波\s*</);
+  assert.match(source, />\s*频率下限\s*</);
+  assert.match(source, />\s*频率上限\s*</);
+  assert.match(source, /const \[frequencyMinInput, setFrequencyMinInput\]/);
+  assert.match(source, /const \[radiusMinInput, setRadiusMinInput\]/);
+  assert.match(source, /onBlur=\{\(\) => commitFrequencyInputs\(\)\}/);
+  assert.match(source, /onBlur=\{\(\) => commitRadiusInputs\(\)\}/);
   assert.match(source, /lg:h-full/);
   assert.doesNotMatch(source, /max-h-\[38dvh\]/);
+});
+
+test('AnalyzerWorkspace defaults to N=7 harmonics', () => {
+  const source = readFileSync(
+    path.resolve(process.cwd(), 'src/features/analyzer/AnalyzerWorkspace.tsx'),
+    'utf8',
+  );
+
+  assert.match(source, /const \[numHarmonics, setNumHarmonics\] = useState<number>\(7\)/);
+});
+
+test('MirrorWorkspace uses the agreed default render and deformation values', () => {
+  const source = readFileSync(
+    path.resolve(process.cwd(), 'src/features/mirror/MirrorWorkspace.tsx'),
+    'utf8',
+  );
+
+  assert.match(source, /displayMode: DisplayMode\.WAVEFORM/);
+  assert.match(source, /leftRenderMode: SideRenderMode\.SEPARATE/);
+  assert.match(source, /rightRenderMode: SideRenderMode\.MERGED/);
+  assert.match(source, /energyInfluence: 1/);
+  assert.match(source, /amplitudeScale: 40/);
+  assert.match(source, /radiusMin: 40/);
+  assert.match(source, /radiusMax: 400/);
+  assert.match(source, /waveDensityMultiplier: 2/);
+  assert.match(source, /feedbackDecay: 0\.45/);
+  assert.match(source, /foldThreshold: 0\.55/);
+  assert.match(source, /ruminationFrequency: 5/);
+  assert.match(source, /ruminationStrength: 0\.2/);
+});
+
+test('Analyzer side-panel copy avoids long wrapped phrases in narrow layouts', () => {
+  const jobListSource = readFileSync(
+    path.resolve(process.cwd(), 'src/features/analyzer/components/AnalyzerJobList.tsx'),
+    'utf8',
+  );
+  const recorderSource = readFileSync(
+    path.resolve(process.cwd(), 'src/features/analyzer/components/Recorder.tsx'),
+    'utf8',
+  );
+  const workspaceSource = readFileSync(
+    path.resolve(process.cwd(), 'src/features/analyzer/AnalyzerWorkspace.tsx'),
+    'utf8',
+  );
+
+  assert.match(jobListSource, />导入后在此切换任务。</);
+  assert.match(jobListSource, /\{jobs\.length\}<\/span>/);
+  assert.doesNotMatch(jobListSource, />\s*项\s*</);
+
+  assert.match(recorderSource, />\s*5秒\s*</);
+  assert.match(recorderSource, />\s*10秒\s*</);
+  assert.doesNotMatch(recorderSource, />分段 5 秒</);
+  assert.doesNotMatch(recorderSource, />分段 10 秒</);
+
+  assert.match(workspaceSource, />\s*N\s*</);
+  assert.doesNotMatch(workspaceSource, /N = 2/);
+  assert.doesNotMatch(workspaceSource, /N = 7/);
 });

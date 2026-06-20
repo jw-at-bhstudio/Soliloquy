@@ -4,6 +4,8 @@
  */
 
 import { VoiceprintData, VoiceprintTrack, RenderConfig, DisplayMode } from "../types";
+import { computeTrackRadiusSlots } from "./radiusMapping";
+import { resolveTrackRenderSeries } from "./trackSelection";
 
 export interface Point2D {
   x: number;
@@ -47,8 +49,13 @@ export function calculateTrackPoints(
 ): TrackLinePoints[] {
   const {
     displayMode,
-    nLeft,
-    nRight,
+    leftTrackIndices,
+    rightTrackIndices,
+    leftRenderMode,
+    rightRenderMode,
+    radiusMode,
+    frequencyMin,
+    frequencyMax,
     radiusMin,
     radiusMax,
     energyInfluence,
@@ -57,35 +64,46 @@ export function calculateTrackPoints(
   } = config;
 
   const M = data.sampleCount;
-  const totalOriginalTracks = data.tracks.length;
-  
-  // Decide how many tracks to generate based on limits
-  const maxActiveTracks = Math.max(nLeft, nRight);
+  const leftSlots = computeTrackRadiusSlots({
+    tracks: data.tracks,
+    f0: data.f0,
+    radiusMode,
+    frequencyMin,
+    frequencyMax,
+    radiusMin,
+    radiusMax,
+    energyInfluence,
+  });
+  const rightSlots = computeTrackRadiusSlots({
+    tracks: deformedTracks,
+    f0: data.f0,
+    radiusMode,
+    frequencyMin,
+    frequencyMax,
+    radiusMin,
+    radiusMax,
+    energyInfluence,
+  });
+  const leftSeries = resolveTrackRenderSeries(data.tracks, leftTrackIndices, leftRenderMode, leftSlots);
+  const rightSeries = resolveTrackRenderSeries(
+    deformedTracks,
+    rightTrackIndices,
+    rightRenderMode,
+    rightSlots,
+  );
+  const maxActiveTracks = Math.max(leftSeries.length, rightSeries.length);
   const result: TrackLinePoints[] = [];
 
   for (let k = 0; k < maxActiveTracks; k++) {
-    // Left channel parameters
-    const leftActive = k < nLeft && k < totalOriginalTracks;
-    const rightActive = k < nRight && k < deformedTracks.length;
+    const leftSeriesItem = leftSeries[k];
+    const rightSeriesItem = rightSeries[k];
+    const leftActive = Boolean(leftSeriesItem);
+    const rightActive = Boolean(rightSeriesItem);
 
     if (!leftActive && !rightActive) continue;
 
-    // Use original track's average energy for BOTH left and right baseline radii
-    // to keep symmetric circles matching precisely at boundaries.
-    const origTrack = k < totalOriginalTracks ? data.tracks[k] : data.tracks[totalOriginalTracks - 1];
-    const avgEnergy = origTrack ? origTrack.averageEnergy : 0.1;
-
-    // Compute identical baseline radius for track order k
-    // We use a non-linear spacing order (power 1.2) to design highly musical orbits
-    const leftRatio = nLeft > 1 ? k / (nLeft - 1) : 0.5;
-    const rightRatio = nRight > 1 ? k / (nRight - 1) : 0.5;
-    
-    // Choose track baseline radius
-    const ratio = Math.max(leftRatio, rightRatio); // or order based
-    const orbitBaseline = radiusMin + Math.pow(k / Math.max(maxActiveTracks - 1, 1), 1.25) * (radiusMax - radiusMin);
-    
-    // Shift baseline radius dynamically according to voiceprint energy
-    const r_base = orbitBaseline + energyInfluence * avgEnergy * (radiusMax - radiusMin);
+    const leftRadius = leftSeriesItem?.radius ?? radiusMin;
+    const rightRadius = rightSeriesItem?.radius ?? radiusMin;
 
     const leftPoints: Point2D[] = [];
     const rightPoints: Point2D[] = [];
@@ -93,23 +111,23 @@ export function calculateTrackPoints(
     // 1. Generate Left semisphere points (original)
     // Angles: 0.5*PI (top) -> 1.5*PI (bottom)
     if (leftActive) {
-      const track = data.tracks[k];
       for (let j = 0; j < M; j++) {
         const u = j / (M - 1 || 1); // Time coordinate 0.0 -> 1.0
         const theta = 0.5 * Math.PI + u * Math.PI; // Go from top to bottom
 
         let waveOffset = 0;
-        const amp = track.amplitudes[j];
+        const amp = leftSeriesItem.amplitudes[j] ?? 0;
 
         if (displayMode === DisplayMode.ENVELOPE) {
           waveOffset = amp * amplitudeScale;
         } else {
           // Continuous integration phase parameter
-          const phase = (k + 1) * cumulativePhase[j] * waveDensityMultiplier * 0.01;
+          const phase =
+            leftSeriesItem.harmonicOrder * cumulativePhase[j] * waveDensityMultiplier * 0.01;
           waveOffset = amp * amplitudeScale * Math.sin(phase);
         }
 
-        const r = Math.max(1, r_base + waveOffset);
+        const r = Math.max(1, leftRadius + waveOffset);
         leftPoints.push({
           x: cx + r * Math.cos(theta),
           y: cy + r * Math.sin(theta)
@@ -121,7 +139,6 @@ export function calculateTrackPoints(
     // Boundary lock: Time flows backwards from bottom to top
     // Angles: 1.5*PI (bottom) -> 2.5*PI (top)
     if (rightActive) {
-      const track = deformedTracks[k];
       for (let p = 0; p < M; p++) {
         const v = p / (M - 1 || 1); // Interpolation coordinate 0.0 -> 1.0
         const theta = 1.5 * Math.PI + v * Math.PI; // Go from bottom to top
@@ -129,17 +146,18 @@ export function calculateTrackPoints(
         // Reversed lookup: angle 1.5*PI corresponds to t = T (j = M-1)
         // angle 2.5*PI corresponds to t = 0 (j = 0)
         const j = (M - 1) - p;
-        const amp = track.amplitudes[j];
+        const amp = rightSeriesItem.amplitudes[j] ?? 0;
 
         let waveOffset = 0;
         if (displayMode === DisplayMode.ENVELOPE) {
           waveOffset = amp * amplitudeScale;
         } else {
-          const phase = (k + 1) * cumulativePhase[j] * waveDensityMultiplier * 0.01;
+          const phase =
+            rightSeriesItem.harmonicOrder * cumulativePhase[j] * waveDensityMultiplier * 0.01;
           waveOffset = amp * amplitudeScale * Math.sin(phase);
         }
 
-        const r = Math.max(1, r_base + waveOffset);
+        const r = Math.max(1, rightRadius + waveOffset);
         rightPoints.push({
           x: cx + r * Math.cos(theta),
           y: cy + r * Math.sin(theta)
@@ -148,7 +166,7 @@ export function calculateTrackPoints(
     }
 
     result.push({
-      harmonicOrder: k + 1,
+      harmonicOrder: leftSeriesItem?.harmonicOrder ?? rightSeriesItem?.harmonicOrder ?? k + 1,
       leftPoints,
       rightPoints
     });

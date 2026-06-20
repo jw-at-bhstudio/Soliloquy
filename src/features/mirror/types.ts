@@ -12,13 +12,28 @@ export enum DisplayMode {
   WAVEFORM = "WAVEFORM",   // 微波共鸣模式 (Detailed carrier soundwave fringes)
 }
 
+export enum SideRenderMode {
+  SEPARATE = "SEPARATE",
+  MERGED = "MERGED",
+}
+
+export enum RadiusMode {
+  ABSOLUTE_FREQUENCY = "ABSOLUTE_FREQUENCY",
+  RELATIVE_HARMONIC = "RELATIVE_HARMONIC",
+}
+
 export interface RenderConfig {
   displayMode: DisplayMode;
-  nLeft: number;             // Left side harmonics slider limit (1 to max tracks)
-  nRight: number;            // Right side harmonics slider limit (1 to max tracks)
+  leftTrackIndices: number[];
+  rightTrackIndices: number[];
+  leftRenderMode: SideRenderMode;
+  rightRenderMode: SideRenderMode;
+  radiusMode?: RadiusMode;
+  frequencyMin?: number;
+  frequencyMax?: number;
   radiusMin: number;         // R_min
   radiusMax: number;         // R_max
-  energyInfluence: number;   // 能量自适应轨道半径偏置系数
+  energyInfluence: number;   // 频率半径到平均振幅半径的插值比例
   amplitudeScale: number;    // Amplitude scaling for visualization waves
   waveDensityMultiplier: number; // Carrier frequency divider / density controls
   showGrid: boolean;         // Show radial guides

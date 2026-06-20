@@ -88,7 +88,8 @@ export function generateDemoVoiceprint(duration: number = 4.0, frameCount: numbe
     f0: f0Array,
     tracks,
     duration,
-    sampleCount: frameCount
+    sampleCount: frameCount,
+    referenceRms: 0.12,
   };
 }
 
@@ -101,7 +102,7 @@ export function validateAndParseVoiceprint(input: any): VoiceprintData {
     throw new Error("导入的数据不是有效的 JSON 对象。");
   }
 
-  const { time, f0, tracks } = input;
+  const { time, f0, tracks, referenceRms } = input;
 
   if (!Array.isArray(time) || time.length < 2) {
     throw new Error("缺少有效的 'time' 时间轴数组（长度至少为 2）。");
@@ -145,6 +146,10 @@ export function validateAndParseVoiceprint(input: any): VoiceprintData {
     f0: f0.map(Number),
     tracks: parsedTracks,
     duration: time[time.length - 1] - time[0] || 1.0,
-    sampleCount: time.length
+    sampleCount: time.length,
+    referenceRms:
+      typeof referenceRms === "number" && Number.isFinite(referenceRms) && referenceRms > 0
+        ? referenceRms
+        : 0.12,
   };
 }

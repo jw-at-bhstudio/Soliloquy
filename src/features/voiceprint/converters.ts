@@ -1,5 +1,6 @@
 import { AnalyzedAudio } from '../analyzer/types';
 import { VoiceprintData } from './types';
+import { calculateRms } from '../../shared/audio/normalization';
 
 export function analyzedAudioToVoiceprint(analysis: AnalyzedAudio): VoiceprintData {
   return {
@@ -18,5 +19,6 @@ export function analyzedAudioToVoiceprint(analysis: AnalyzedAudio): VoiceprintDa
     }),
     duration: analysis.duration,
     sampleCount: analysis.frameCount,
+    referenceRms: calculateRms(analysis.audioData),
   };
 }

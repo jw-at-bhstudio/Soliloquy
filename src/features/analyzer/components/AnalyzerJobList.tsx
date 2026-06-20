@@ -26,10 +26,10 @@ export default function AnalyzerJobList({
       <div className="flex items-center justify-between border-b border-white/5 pb-3">
         <div className={getContentStackClassName()}>
           <div className="text-white">任务列表</div>
-          <div className="text-white/40">导入声音后，这里会形成可切换的任务列表。</div>
+          <div className="text-white/40">导入后在此切换任务。</div>
         </div>
         <div className="rounded border border-white/10 bg-black px-2 py-1 text-white/60">
-          <span style={{ fontFamily: 'var(--font-mono)' }}>{jobs.length}</span> 项
+          <span style={{ fontFamily: 'var(--font-mono)' }}>{jobs.length}</span>
         </div>
       </div>
 
@@ -37,7 +37,7 @@ export default function AnalyzerJobList({
         {jobs.length === 0 ? (
           <div className="flex h-full min-h-[240px] flex-col items-center justify-center rounded border border-dashed border-white/5 text-center text-white/30">
             <AudioLines className="mb-2 h-4 w-4" />
-            <div>导入声音后，这里会形成任务列表。</div>
+            <div>导入后在此切换任务。</div>
           </div>
         ) : (
           jobs.map((job) => {

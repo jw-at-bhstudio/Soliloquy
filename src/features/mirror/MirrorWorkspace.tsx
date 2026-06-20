@@ -4,7 +4,15 @@ import { Link } from 'react-router-dom';
 
 import { FloatingControls } from './components/FloatingControls';
 import { VoiceprintCanvas } from './components/VoiceprintCanvas';
-import { DisplayMode, VoiceprintData, DeformationParams, RenderConfig, MirrorSessionSource } from './types';
+import {
+  DisplayMode,
+  RadiusMode,
+  SideRenderMode,
+  VoiceprintData,
+  DeformationParams,
+  RenderConfig,
+  MirrorSessionSource,
+} from './types';
 import { globalSynth } from './utils/audioSynthesizer';
 import {
   computeCumulativePhase,
@@ -13,6 +21,8 @@ import {
 } from './utils/coordinateCalculators';
 import { applyDeformations } from './utils/deformations';
 import { generateDemoVoiceprint, validateAndParseVoiceprint } from './utils/generators';
+import { sanitizeFrequencyRange } from './utils/radiusMapping';
+import { createDefaultTrackSelection, sanitizeTrackSelection } from './utils/trackSelection';
 import {
   getContentStackClassName,
   getPageContainerClassName,
@@ -41,21 +51,26 @@ export default function MirrorWorkspace({
 
   const [config, setConfig] = useState<RenderConfig>({
     displayMode: DisplayMode.WAVEFORM,
-    nLeft: 12,
-    nRight: 10,
-    radiusMin: 60,
-    radiusMax: 200,
-    energyInfluence: 0.35,
-    amplitudeScale: 32,
-    waveDensityMultiplier: 1.25,
+    leftTrackIndices: createDefaultTrackSelection(initialVoiceprint?.tracks.length ?? 16, 12),
+    rightTrackIndices: createDefaultTrackSelection(initialVoiceprint?.tracks.length ?? 16, 10),
+    leftRenderMode: SideRenderMode.SEPARATE,
+    rightRenderMode: SideRenderMode.MERGED,
+    radiusMode: RadiusMode.ABSOLUTE_FREQUENCY,
+    frequencyMin: 80,
+    frequencyMax: 2000,
+    radiusMin: 40,
+    radiusMax: 400,
+    energyInfluence: 1,
+    amplitudeScale: 40,
+    waveDensityMultiplier: 2,
     showGrid: true,
   });
 
   const [deformParams, setDeformParams] = useState<DeformationParams>({
-    feedbackDecay: 0.4,
-    foldThreshold: 0.65,
-    ruminationFrequency: 2.8,
-    ruminationStrength: 0.12,
+    feedbackDecay: 0.45,
+    foldThreshold: 0.55,
+    ruminationFrequency: 5,
+    ruminationStrength: 0.2,
   });
 
   const [playbackTime, setPlaybackTime] = useState<number>(0);
@@ -73,6 +88,29 @@ export default function MirrorWorkspace({
   }, [initialVoiceprint, sessionName, source]);
 
   const maxAvailableTracks = voiceprint.tracks.length;
+
+  useEffect(() => {
+    setConfig((prev) => {
+      const safeRange = sanitizeFrequencyRange(prev.frequencyMin ?? 80, prev.frequencyMax ?? 2000);
+      const leftTrackIndices = sanitizeTrackSelection(prev.leftTrackIndices, maxAvailableTracks);
+      const rightTrackIndices = sanitizeTrackSelection(prev.rightTrackIndices, maxAvailableTracks);
+
+      return {
+        ...prev,
+        radiusMode: prev.radiusMode ?? RadiusMode.ABSOLUTE_FREQUENCY,
+        frequencyMin: safeRange.frequencyMin,
+        frequencyMax: safeRange.frequencyMax,
+        leftTrackIndices:
+          leftTrackIndices.length > 0
+            ? leftTrackIndices
+            : createDefaultTrackSelection(maxAvailableTracks, Math.min(12, maxAvailableTracks)),
+        rightTrackIndices:
+          rightTrackIndices.length > 0
+            ? rightTrackIndices
+            : createDefaultTrackSelection(maxAvailableTracks, Math.min(10, maxAvailableTracks)),
+      };
+    });
+  }, [maxAvailableTracks]);
 
   const deformedTracks = useMemo(() => {
     return applyDeformations(voiceprint.tracks, deformParams);
@@ -96,7 +134,12 @@ export default function MirrorWorkspace({
   }, []);
 
   const handlePlayEnsemble = () => {
-    globalSynth.playEnsemble(voiceprint, deformedTracks, config.nLeft, config.nRight);
+    globalSynth.playEnsemble(
+      voiceprint,
+      deformedTracks,
+      config.leftTrackIndices,
+      config.rightTrackIndices,
+    );
     setIsPlaying(true);
   };
 
@@ -116,8 +159,8 @@ export default function MirrorWorkspace({
       const available = parsed.tracks.length;
       setConfig((prev) => ({
         ...prev,
-        nLeft: Math.min(prev.nLeft, available),
-        nRight: Math.min(prev.nRight, available),
+        leftTrackIndices: createDefaultTrackSelection(available, Math.min(prev.leftTrackIndices.length || 12, available)),
+        rightTrackIndices: createDefaultTrackSelection(available, Math.min(prev.rightTrackIndices.length || 10, available)),
       }));
     } catch (error: any) {
       alert(`声纹加载失败: ${error.message}`);

@@ -9,9 +9,10 @@ import AcousticCanvas from './components/AcousticCanvas';
 import AudioUploader from './components/AudioUploader';
 import Recorder from './components/Recorder';
 import TrackList from './components/TrackList';
-import { analyzeAudioBuffer, synthesizeAdditiveSynthesizer } from './utils/dsp';
-import { analyzedAudioToVoiceprint } from '../voiceprint/converters';
+import { synthesizeAdditiveSynthesizer } from './utils/dsp';
+import { createAnalyzerJobRunner } from './utils/analyzerJobRunner';
 import { VoiceprintData } from '../voiceprint/types';
+import { DEFAULT_TARGET_RMS, normalizeAudioSamples } from '../../shared/audio/normalization';
 import {
   getContentStackClassName,
   getPageContainerClassName,
@@ -47,18 +48,20 @@ export default function AnalyzerWorkspace() {
     exportableJobs,
   } = useAnalyzerRepository();
 
-  const [numHarmonics, setNumHarmonics] = useState<number>(5);
+  const [numHarmonics, setNumHarmonics] = useState<number>(7);
   const [displayMode, setDisplayMode] = useState<'components' | 'additive' | 'both'>('both');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [sourceType, setSourceType] = useState<'upload' | 'mic'>('upload');
   const [isPlayingOriginal, setIsPlayingOriginal] = useState<boolean>(false);
   const [isPlayingSynthesized, setIsPlayingSynthesized] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<number>(0);
+  const [normalizePlayback, setNormalizePlayback] = useState<boolean>(true);
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const originalSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const synthesizedSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const playbackStartTimeRef = useRef<number>(0);
+  const jobRunnerRef = useRef<ReturnType<typeof createAnalyzerJobRunner> | null>(null);
 
   const analysis = selectedJob?.analysis ?? null;
   const selectedTracks = selectedJob?.selectedTracks ?? [];
@@ -86,41 +89,18 @@ export default function AnalyzerWorkspace() {
       return;
     }
 
-    setIsLoading(true);
-    updateJob(queuedJob.id, (job) => ({ ...job, status: 'processing', error: undefined }));
+    if (!jobRunnerRef.current) {
+      jobRunnerRef.current = createAnalyzerJobRunner({ updateJob, setIsLoading });
+    }
 
-    const timer = window.setTimeout(() => {
-      try {
-        const results = analyzeAudioBuffer(
-          queuedJob.rawAudio,
-          queuedJob.sampleRate,
-          queuedJob.sourceName,
-          numHarmonics,
-        );
-
-        updateJob(queuedJob.id, (job) => ({
-          ...job,
-          status: 'ready',
-          analysis: results,
-          voiceprint: analyzedAudioToVoiceprint(results),
-          selectedTracks: new Array(results.harmonics.length).fill(true),
-        }));
-      } catch (error) {
-        const message = error instanceof Error ? error.message : '解析音频信号时发生未知错误。';
-        updateJob(queuedJob.id, (job) => ({
-          ...job,
-          status: 'error',
-          error: message,
-        }));
-      } finally {
-        setIsLoading(false);
-      }
-    }, 40);
-
-    return () => {
-      window.clearTimeout(timer);
-    };
+    jobRunnerRef.current.start(queuedJob, { numHarmonics });
   }, [numHarmonics, processingJob, queuedJob, updateJob]);
+
+  useEffect(() => {
+    return () => {
+      jobRunnerRef.current?.cancel();
+    };
+  }, []);
 
   useEffect(() => {
     let animationFrameId = 0;
@@ -247,7 +227,10 @@ export default function AnalyzerWorkspace() {
     try {
       const ctx = getAudioContext();
       const buffer = ctx.createBuffer(1, analysis.audioData.length, analysis.sampleRate);
-      buffer.copyToChannel(analysis.audioData, 0);
+      const originalAudio = normalizePlayback
+        ? normalizeAudioSamples(analysis.audioData, { targetRms: DEFAULT_TARGET_RMS })
+        : analysis.audioData;
+      buffer.copyToChannel(originalAudio, 0);
 
       const source = ctx.createBufferSource();
       source.buffer = buffer;
@@ -282,7 +265,10 @@ export default function AnalyzerWorkspace() {
       const synthFloats = synthesizeAdditiveSynthesizer(
         analysis,
         selectedTracks,
-        analysis.sampleRate,
+        {
+          sampleRate: analysis.sampleRate,
+          targetRms: normalizePlayback ? DEFAULT_TARGET_RMS : undefined,
+        },
       );
       const buffer = ctx.createBuffer(1, synthFloats.length, analysis.sampleRate);
       buffer.copyToChannel(synthFloats, 0);
@@ -424,7 +410,7 @@ export default function AnalyzerWorkspace() {
 
               <div className="flex flex-col gap-3">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-white/60">倍频数量 N（用于新入队任务）</span>
+                  <span className="text-white/60">N</span>
                   <span
                     className="rounded-sm border border-white/10 bg-black px-2 py-0.5 text-white"
                     style={{ fontFamily: 'var(--font-mono)' }}
@@ -442,9 +428,19 @@ export default function AnalyzerWorkspace() {
                   className="h-1 w-full cursor-pointer rounded-lg bg-white/10 accent-white"
                 />
                 <div className="flex justify-between text-white/30">
-                  <span style={{ fontFamily: 'var(--font-mono)' }}>N = 2</span>
-                  <span style={{ fontFamily: 'var(--font-mono)' }}>N = 7</span>
+                  <span style={{ fontFamily: 'var(--font-mono)' }}>2</span>
+                  <span style={{ fontFamily: 'var(--font-mono)' }}>7</span>
                 </div>
+
+                <label className="flex items-center justify-between rounded border border-white/5 bg-black px-3 py-2">
+                  <span className="text-white/60">试听音量均一化</span>
+                  <input
+                    type="checkbox"
+                    checked={normalizePlayback}
+                    onChange={(event) => setNormalizePlayback(event.target.checked)}
+                    className="h-4 w-4 cursor-pointer border border-white/10 bg-black accent-white"
+                  />
+                </label>
               </div>
             </div>
 

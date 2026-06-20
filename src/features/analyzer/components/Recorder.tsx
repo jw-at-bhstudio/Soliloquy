@@ -164,7 +164,7 @@ export default function Recorder({ onAudioRecorded, isLoading, setIsLoading }: R
                     : 'border-white/10 text-white/50 hover:text-white hover:border-white/30'
                 }`}
               >
-                分段 5 秒
+                5秒
               </button>
               <button
                 disabled={isLoading}
@@ -175,7 +175,7 @@ export default function Recorder({ onAudioRecorded, isLoading, setIsLoading }: R
                     : 'border-white/10 text-white/50 hover:text-white hover:border-white/30'
                 }`}
               >
-                分段 10 秒
+                10秒
               </button>
             </>
           )}

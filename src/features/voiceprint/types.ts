@@ -10,6 +10,7 @@ export interface VoiceprintData {
   tracks: VoiceprintTrack[];
   duration: number;
   sampleCount: number;
+  referenceRms?: number;
 }
 
 export type MirrorSessionSource = 'demo' | 'imported-json' | 'analyzer-job';

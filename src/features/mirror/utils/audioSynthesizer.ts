@@ -4,6 +4,8 @@
  */
 
 import { VoiceprintData, VoiceprintTrack } from "../types";
+import { DEFAULT_TARGET_RMS, normalizeAudioSamples } from "../../../shared/audio/normalization";
+import { sanitizeTrackSelection } from "./trackSelection";
 
 export class StereoVoiceprintSynth {
   private audioCtx: AudioContext | null = null;
@@ -41,8 +43,8 @@ export class StereoVoiceprintSynth {
   private renderAudioBuffer(
     data: VoiceprintData,
     deformedTracks: VoiceprintTrack[],
-    nLeft: number,
-    nRight: number
+    leftTrackIndices: number[],
+    rightTrackIndices: number[],
   ): AudioBuffer {
     this.initAudioContext();
     const ctx = this.audioCtx!;
@@ -56,18 +58,17 @@ export class StereoVoiceprintSynth {
 
     const frameCount = data.sampleCount;
     const f0 = data.f0;
+    const leftSelection = sanitizeTrackSelection(leftTrackIndices, data.tracks.length);
+    const rightSelection = sanitizeTrackSelection(rightTrackIndices, deformedTracks.length);
 
-    // Fast-access amplitude tables
-    // Left side original tracks
     const leftAmpsTable: Float32Array[] = [];
-    for (let k = 0; k < Math.min(nLeft, data.tracks.length); k++) {
-      leftAmpsTable.push(new Float32Array(data.tracks[k].amplitudes));
+    for (const trackIndex of leftSelection) {
+      leftAmpsTable.push(new Float32Array(data.tracks[trackIndex].amplitudes));
     }
 
-    // Right side deformed tracks
     const rightAmpsTable: Float32Array[] = [];
-    for (let k = 0; k < Math.min(nRight, deformedTracks.length); k++) {
-       rightAmpsTable.push(new Float32Array(deformedTracks[k].amplitudes));
+    for (const trackIndex of rightSelection) {
+      rightAmpsTable.push(new Float32Array(deformedTracks[trackIndex].amplitudes));
     }
 
     // Precalculate phase accumulator arrays
@@ -130,15 +131,13 @@ export class StereoVoiceprintSynth {
         sumR += amp * carrier;
       }
 
-      // Normalization factor & soft protection limiting to avoid standard digital clipping
-      // Scaled by 0.35/sqrt(harmonicCount) to guarantee standard comfortable volume range.
-      const factorL = activeLCount > 0 ? 0.38 / Math.sqrt(activeLCount) : 0;
-      const factorR = activeRCount > 0 ? 0.38 / Math.sqrt(activeRCount) : 0;
-
-      // Write samples
-      leftChannelData[n] = Math.max(-1.0, Math.min(1.0, sumL * factorL));
-      rightChannelData[n] = Math.max(-1.0, Math.min(1.0, sumR * factorR));
+      leftChannelData[n] = sumL;
+      rightChannelData[n] = sumR;
     }
+
+    const targetRms = data.referenceRms ?? DEFAULT_TARGET_RMS;
+    leftChannelData.set(normalizeAudioSamples(leftChannelData, { targetRms }));
+    rightChannelData.set(normalizeAudioSamples(rightChannelData, { targetRms }));
 
     return buffer;
   }
@@ -149,14 +148,14 @@ export class StereoVoiceprintSynth {
   public playEnsemble(
     data: VoiceprintData,
     deformedTracks: VoiceprintTrack[],
-    nLeft: number,
-    nRight: number
+    leftTrackIndices: number[],
+    rightTrackIndices: number[],
   ) {
     this.stop();
     this.initAudioContext();
     
     this.duration = data.duration;
-    const buffer = this.renderAudioBuffer(data, deformedTracks, nLeft, nRight);
+    const buffer = this.renderAudioBuffer(data, deformedTracks, leftTrackIndices, rightTrackIndices);
 
     const source = this.audioCtx!.createBufferSource();
     source.buffer = buffer;

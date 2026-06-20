@@ -3,9 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { FolderOpen, Play, Square, Copy, Zap } from "lucide-react";
-import { RenderConfig, DeformationParams, DisplayMode } from "../types";
+import { RenderConfig, DeformationParams, DisplayMode, SideRenderMode } from "../types";
+import { sanitizeFrequencyRange } from "../utils/radiusMapping";
+import { createDefaultTrackSelection, sanitizeTrackSelection } from "../utils/trackSelection";
 import { generateDemoVoiceprint } from "../utils/generators";
 
 interface FloatingControlsProps {
@@ -38,6 +40,93 @@ export function FloatingControls({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [dragActive, setDragActive] = useState<boolean>(false);
   const [copiedNotification, setCopiedNotification] = useState<boolean>(false);
+  const [frequencyMinInput, setFrequencyMinInput] = useState<string>(String(config.frequencyMin ?? 80));
+  const [frequencyMaxInput, setFrequencyMaxInput] = useState<string>(String(config.frequencyMax ?? 2000));
+  const [radiusMinInput, setRadiusMinInput] = useState<string>(String(config.radiusMin));
+  const [radiusMaxInput, setRadiusMaxInput] = useState<string>(String(config.radiusMax));
+
+  useEffect(() => {
+    setFrequencyMinInput(String(config.frequencyMin ?? 80));
+  }, [config.frequencyMin]);
+
+  useEffect(() => {
+    setFrequencyMaxInput(String(config.frequencyMax ?? 2000));
+  }, [config.frequencyMax]);
+
+  useEffect(() => {
+    setRadiusMinInput(String(config.radiusMin));
+  }, [config.radiusMin]);
+
+  useEffect(() => {
+    setRadiusMaxInput(String(config.radiusMax));
+  }, [config.radiusMax]);
+
+  const parseRawNumber = (rawValue: string, fallback: number) => {
+    const parsed = Number.parseFloat(rawValue.trim());
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+
+  const toggleTrack = (side: "left" | "right", trackIndex: number) => {
+    const currentSelection = side === "left" ? config.leftTrackIndices : config.rightTrackIndices;
+    const nextSelection = currentSelection.includes(trackIndex)
+      ? currentSelection.filter((index) => index !== trackIndex)
+      : [...currentSelection, trackIndex];
+
+    onChangeConfig({
+      ...config,
+      ...(side === "left"
+        ? { leftTrackIndices: sanitizeTrackSelection(nextSelection, maxAvailableTracks) }
+        : { rightTrackIndices: sanitizeTrackSelection(nextSelection, maxAvailableTracks) }),
+    });
+  };
+
+  const setAllTracks = (side: "left" | "right", mode: "all" | "clear") => {
+    onChangeConfig({
+      ...config,
+      ...(side === "left"
+        ? {
+            leftTrackIndices:
+              mode === "all" ? createDefaultTrackSelection(maxAvailableTracks, maxAvailableTracks) : [],
+          }
+        : {
+            rightTrackIndices:
+              mode === "all" ? createDefaultTrackSelection(maxAvailableTracks, maxAvailableTracks) : [],
+          }),
+    });
+  };
+
+  const updateFrequencyRange = (nextMin: number, nextMax: number) => {
+    const safeRange = sanitizeFrequencyRange(nextMin, nextMax);
+    onChangeConfig({
+      ...config,
+      frequencyMin: safeRange.frequencyMin,
+      frequencyMax: safeRange.frequencyMax,
+    });
+  };
+
+  const commitFrequencyInputs = () => {
+    const nextMin = parseRawNumber(frequencyMinInput, config.frequencyMin ?? 80);
+    const nextMax = parseRawNumber(frequencyMaxInput, config.frequencyMax ?? 2000);
+    const safeRange = sanitizeFrequencyRange(nextMin, nextMax);
+
+    updateFrequencyRange(safeRange.frequencyMin, safeRange.frequencyMax);
+    setFrequencyMinInput(String(safeRange.frequencyMin));
+    setFrequencyMaxInput(String(safeRange.frequencyMax));
+  };
+
+  const commitRadiusInputs = () => {
+    const nextMin = Math.max(10, Math.round(parseRawNumber(radiusMinInput, config.radiusMin)));
+    const nextMax = Math.round(parseRawNumber(radiusMaxInput, config.radiusMax));
+    const safeMax = Math.max(nextMin + 1, nextMax);
+
+    onChangeConfig({
+      ...config,
+      radiusMin: nextMin,
+      radiusMax: safeMax,
+    });
+    setRadiusMinInput(String(nextMin));
+    setRadiusMaxInput(String(safeMax));
+  };
 
   const handleDownloadSample = () => {
     const sample = generateDemoVoiceprint(4.0, 120);
@@ -171,42 +260,98 @@ export function FloatingControls({
 
           <div className="mb-3">
             <div className="mb-1 flex justify-between">
-              <span className="text-white/75">左侧轨道数</span>
+              <span className="text-white/75">左侧轨道</span>
               <span className="text-white" style={{ fontFamily: "var(--font-mono)" }}>
-                {config.nLeft} / {maxAvailableTracks}
+                {config.leftTrackIndices.length} / {maxAvailableTracks}
               </span>
             </div>
-            <input
-              type="range"
-              min="1"
-              max={maxAvailableTracks}
-              step="1"
-              value={config.nLeft}
-              onChange={(event) => onChangeConfig({ ...config, nLeft: parseInt(event.target.value) })}
-              className="h-1 w-full cursor-pointer rounded bg-stone-800 accent-white"
-              id="slider-n-left"
-            />
-            <span className="mt-0.5 block text-white/35">左侧绘制的轨道数量</span>
+            <div className="mb-2 flex items-center justify-between text-white/40">
+              <span>指定绘制哪些轨</span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setAllTracks("left", "all")}
+                  className="cursor-pointer transition-colors hover:text-white"
+                  type="button"
+                >
+                  全选
+                </button>
+                <button
+                  onClick={() => setAllTracks("left", "clear")}
+                  className="cursor-pointer transition-colors hover:text-white"
+                  type="button"
+                >
+                  清空
+                </button>
+              </div>
+            </div>
+            <div className="grid grid-cols-6 gap-1.5" id="track-picker-left">
+              {Array.from({ length: maxAvailableTracks }, (_, index) => {
+                const selected = config.leftTrackIndices.includes(index);
+                return (
+                  <button
+                    key={`left-track-${index}`}
+                    type="button"
+                    onClick={() => toggleTrack("left", index)}
+                    className={`rounded border px-0 py-1 text-center transition-colors ${
+                      selected
+                        ? "border-white bg-white text-black"
+                        : "border-white/10 bg-black text-white/55 hover:border-white/30 hover:text-white"
+                    }`}
+                  >
+                    {index + 1}
+                  </button>
+                );
+              })}
+            </div>
+            <span className="mt-1.5 block text-white/35">支持明确选择左侧要显示的轨道编号</span>
           </div>
 
           <div>
             <div className="mb-1 flex justify-between">
-              <span className="text-white/75">右侧轨道数</span>
+              <span className="text-white/75">右侧轨道</span>
               <span className="text-white" style={{ fontFamily: "var(--font-mono)" }}>
-                {config.nRight} / {maxAvailableTracks}
+                {config.rightTrackIndices.length} / {maxAvailableTracks}
               </span>
             </div>
-            <input
-              type="range"
-              min="1"
-              max={maxAvailableTracks}
-              step="1"
-              value={config.nRight}
-              onChange={(event) => onChangeConfig({ ...config, nRight: parseInt(event.target.value) })}
-              className="h-1 w-full cursor-pointer rounded bg-stone-800 accent-white"
-              id="slider-n-right"
-            />
-            <span className="mt-0.5 block text-white/35">右侧绘制的轨道数量</span>
+            <div className="mb-2 flex items-center justify-between text-white/40">
+              <span>指定绘制哪些轨</span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setAllTracks("right", "all")}
+                  className="cursor-pointer transition-colors hover:text-white"
+                  type="button"
+                >
+                  全选
+                </button>
+                <button
+                  onClick={() => setAllTracks("right", "clear")}
+                  className="cursor-pointer transition-colors hover:text-white"
+                  type="button"
+                >
+                  清空
+                </button>
+              </div>
+            </div>
+            <div className="grid grid-cols-6 gap-1.5" id="track-picker-right">
+              {Array.from({ length: maxAvailableTracks }, (_, index) => {
+                const selected = config.rightTrackIndices.includes(index);
+                return (
+                  <button
+                    key={`right-track-${index}`}
+                    type="button"
+                    onClick={() => toggleTrack("right", index)}
+                    className={`rounded border px-0 py-1 text-center transition-colors ${
+                      selected
+                        ? "border-white bg-white text-black"
+                        : "border-white/10 bg-black text-white/55 hover:border-white/30 hover:text-white"
+                    }`}
+                  >
+                    {index + 1}
+                  </button>
+                );
+              })}
+            </div>
+            <span className="mt-1.5 block text-white/35">支持明确选择右侧要显示的轨道编号</span>
           </div>
         </div>
 
@@ -339,9 +484,46 @@ export function FloatingControls({
             </div>
           </div>
 
+          <div className="mb-2 text-stone-400">绝对频率</div>
+
+          <div className="mb-3.5 grid grid-cols-2 gap-3">
+            <div>
+              <span className="mb-1 block text-stone-400">频率下限</span>
+              <input
+                type="number"
+                value={frequencyMinInput}
+                onChange={(event) => setFrequencyMinInput(event.target.value)}
+                onBlur={() => commitFrequencyInputs()}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    commitFrequencyInputs();
+                  }
+                }}
+                className="w-full rounded border border-stone-800 bg-stone-950 px-2 py-1 text-white outline-none focus:border-stone-600"
+                style={{ fontFamily: "var(--font-mono)" }}
+              />
+            </div>
+            <div>
+              <span className="mb-1 block text-stone-400">频率上限</span>
+              <input
+                type="number"
+                value={frequencyMaxInput}
+                onChange={(event) => setFrequencyMaxInput(event.target.value)}
+                onBlur={() => commitFrequencyInputs()}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    commitFrequencyInputs();
+                  }
+                }}
+                className="w-full rounded border border-stone-800 bg-stone-950 px-2 py-1 text-white outline-none focus:border-stone-600"
+                style={{ fontFamily: "var(--font-mono)" }}
+              />
+            </div>
+          </div>
+
           <div className="mb-3.5">
             <div className="mb-1 flex justify-between">
-              <span className="text-stone-300">自适应能量轨道排布</span>
+              <span className="text-stone-300">振幅关系半径映射</span>
               <span className="text-white" style={{ fontFamily: "var(--font-mono)" }}>
                 {(config.energyInfluence * 100).toFixed(0)}%
               </span>
@@ -358,7 +540,7 @@ export function FloatingControls({
               className="h-1 w-full cursor-pointer rounded bg-stone-800 accent-white"
               id="slider-energy-influence"
             />
-            <span className="mt-0.5 block text-stone-500">越强的轨道越向外扩散</span>
+            <span className="mt-0.5 block text-stone-500">0% 完全按频率，100% 完全按平均振幅映射</span>
           </div>
 
           <div className="mb-3.5">
@@ -386,12 +568,14 @@ export function FloatingControls({
               <span className="mb-1 block text-stone-400">半径下限</span>
               <input
                 type="number"
-                min="10"
-                max="150"
-                value={config.radiusMin}
-                onChange={(event) =>
-                  onChangeConfig({ ...config, radiusMin: Math.max(10, parseInt(event.target.value) || 10) })
-                }
+                value={radiusMinInput}
+                onChange={(event) => setRadiusMinInput(event.target.value)}
+                onBlur={() => commitRadiusInputs()}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    commitRadiusInputs();
+                  }
+                }}
                 className="w-full rounded border border-stone-800 bg-stone-950 px-2 py-1 text-white outline-none focus:border-stone-600"
                 style={{ fontFamily: "var(--font-mono)" }}
                 id="input-rmin"
@@ -401,12 +585,14 @@ export function FloatingControls({
               <span className="mb-1 block text-stone-400">半径上限</span>
               <input
                 type="number"
-                min="100"
-                max="400"
-                value={config.radiusMax}
-                onChange={(event) =>
-                  onChangeConfig({ ...config, radiusMax: Math.max(100, parseInt(event.target.value) || 100) })
-                }
+                value={radiusMaxInput}
+                onChange={(event) => setRadiusMaxInput(event.target.value)}
+                onBlur={() => commitRadiusInputs()}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    commitRadiusInputs();
+                  }
+                }}
                 className="w-full rounded border border-stone-800 bg-stone-950 px-2 py-1 text-white outline-none focus:border-stone-600"
                 style={{ fontFamily: "var(--font-mono)" }}
                 id="input-rmax"
@@ -437,6 +623,66 @@ export function FloatingControls({
               <span className="mt-0.5 block text-stone-500">控制波形的密度</span>
             </div>
           )}
+
+          <div className="mb-3.5">
+            <div className="mb-1.5 flex items-center justify-between text-stone-300">
+              <span>左侧绘制方式</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 rounded border border-stone-800 bg-stone-950 p-1">
+              <button
+                onClick={() => onChangeConfig({ ...config, leftRenderMode: SideRenderMode.SEPARATE })}
+                className={`cursor-pointer rounded py-1.5 transition-colors ${
+                  config.leftRenderMode === SideRenderMode.SEPARATE
+                    ? "bg-white text-black"
+                    : "text-stone-400 hover:text-stone-200"
+                }`}
+                type="button"
+              >
+                分轨
+              </button>
+              <button
+                onClick={() => onChangeConfig({ ...config, leftRenderMode: SideRenderMode.MERGED })}
+                className={`cursor-pointer rounded py-1.5 transition-colors ${
+                  config.leftRenderMode === SideRenderMode.MERGED
+                    ? "bg-white text-black"
+                    : "text-stone-400 hover:text-stone-200"
+                }`}
+                type="button"
+              >
+                加合
+              </button>
+            </div>
+          </div>
+
+          <div className="mb-3.5">
+            <div className="mb-1.5 flex items-center justify-between text-stone-300">
+              <span>右侧绘制方式</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 rounded border border-stone-800 bg-stone-950 p-1">
+              <button
+                onClick={() => onChangeConfig({ ...config, rightRenderMode: SideRenderMode.SEPARATE })}
+                className={`cursor-pointer rounded py-1.5 transition-colors ${
+                  config.rightRenderMode === SideRenderMode.SEPARATE
+                    ? "bg-white text-black"
+                    : "text-stone-400 hover:text-stone-200"
+                }`}
+                type="button"
+              >
+                分轨
+              </button>
+              <button
+                onClick={() => onChangeConfig({ ...config, rightRenderMode: SideRenderMode.MERGED })}
+                className={`cursor-pointer rounded py-1.5 transition-colors ${
+                  config.rightRenderMode === SideRenderMode.MERGED
+                    ? "bg-white text-black"
+                    : "text-stone-400 hover:text-stone-200"
+                }`}
+                type="button"
+              >
+                加合
+              </button>
+            </div>
+          </div>
 
           <div className="flex items-center justify-between pt-1">
             <span className="text-stone-400">显示参考网格</span>

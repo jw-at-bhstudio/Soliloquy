@@ -187,30 +187,6 @@ export function VoiceprintCanvas({
       }
     });
 
-    // --- DRAW ACTIVE SEMI-TRANSPARENT SCAN POINTER ---
-    if (playbackTime > 0) {
-      const progress = playbackTime / data.duration;
-      // Sweep is progressive from radiusMin to radiusMax
-      const currentR = config.radiusMin + progress * (config.radiusMax - config.radiusMin);
-
-      // Draw sweeping radius circle
-      ctx.beginPath();
-      ctx.arc(0, 0, currentR, 0, 2 * Math.PI);
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
-      ctx.lineWidth = 1.2;
-      ctx.stroke();
-
-      // Semi-transparent scan fill
-      ctx.fillStyle = "rgba(255, 255, 255, 0.03)";
-      ctx.fill();
-
-      // Sweeper center tracker details
-      ctx.beginPath();
-      ctx.arc(0, 0, 4, 0, 2 * Math.PI);
-      ctx.fillStyle = "#ffffff";
-      ctx.fill();
-    }
-
     ctx.restore();
 
     // Canvas Frame Borders and Corner Accents (Futuristic HUD feel)

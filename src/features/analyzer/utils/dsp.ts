@@ -4,6 +4,7 @@
  */
 
 import { AnalyzedAudio, HarmonicTrack } from '../types';
+import { DEFAULT_TARGET_RMS, calculateRms, normalizeAudioSamples } from '../../../shared/audio/normalization';
 
 /**
  * Applies a Hanning window of length M to an array of inputs
@@ -314,8 +315,12 @@ export function analyzeAudioBuffer(
 export function synthesizeAdditiveSynthesizer(
   analysis: AnalyzedAudio,
   enabledTracks: boolean[], // Indexes mapping to harmonics array
-  sampleRate: number = 44100
+  options: {
+    sampleRate?: number;
+    targetRms?: number;
+  } = {},
 ): Float32Array {
+  const sampleRate = options.sampleRate ?? 44100;
   const duration = analysis.duration;
   const totalSamples = Math.round(duration * sampleRate);
   const synthesized = new Float32Array(totalSamples);
@@ -333,7 +338,6 @@ export function synthesizeAdditiveSynthesizer(
 
   if (frameCount === 0) return synthesized;
 
-  // Let's count how many tracks are actually active
   let activeCount = 0;
   for (let t = 0; t < numTracks; t++) {
     if (enabledTracks[t] !== false) {
@@ -407,10 +411,7 @@ export function synthesizeAdditiveSynthesizer(
       }
     }
 
-    // Standard volume headroom scaling factor to avoid digital clipping with summation
-    // We scale by the inverse square root of active tracks to preserve loudness while ensuring no clips
-    const scaleFactor = 0.5 * (1.0 / Math.max(1, Math.sqrt(activeCount)));
-    synthesized[i] = sampleVal * scaleFactor;
+    synthesized[i] = sampleVal;
   }
 
   // Smooth raw buffer at the very start and finish with short fade in/out (5ms) to prevent audio pop clicks
@@ -421,7 +422,8 @@ export function synthesizeAdditiveSynthesizer(
     synthesized[totalSamples - 1 - i] *= fadeRatio;
   }
 
-  return synthesized;
+  const referenceRms = (options.targetRms ?? calculateRms(analysis.audioData)) || DEFAULT_TARGET_RMS;
+  return normalizeAudioSamples(synthesized, { targetRms: referenceRms });
 }
 
 /**
