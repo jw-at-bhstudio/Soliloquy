@@ -7,6 +7,13 @@ import React, { useRef, useEffect, useState } from "react";
 import { VoiceprintData, VoiceprintTrack, RenderConfig } from "../types";
 import { calculateTrackPoints, TrackLinePoints } from "../utils/coordinateCalculators";
 
+const EXPORT_CANVAS_SIZE = 550;
+
+function getGuideRadiusMax(config: RenderConfig): number {
+  const maxSideScale = Math.max(config.leftScale ?? 1, config.rightScale ?? 1, 1);
+  return Math.max(config.radiusMax, 800, config.radiusMax * maxSideScale);
+}
+
 interface VoiceprintCanvasProps {
   data: VoiceprintData;
   deformedTracks: VoiceprintTrack[];
@@ -85,6 +92,7 @@ export function VoiceprintCanvas({
     // Coordinate Center (cx, cy) before Pan
     const cx = width / 2;
     const cy = height / 2;
+    const guideRadiusMax = getGuideRadiusMax(config);
 
     // Compute coordinate points (centered at 0, 0 for easy zoom/pan computation)
     const rawTrackPoints = calculateTrackPoints(
@@ -95,9 +103,17 @@ export function VoiceprintCanvas({
       0, // centered at 0
       0  // centered at 0
     );
+    const exportTrackPoints = calculateTrackPoints(
+      data,
+      deformedTracks,
+      config,
+      cumulativePhase,
+      EXPORT_CANVAS_SIZE / 2,
+      EXPORT_CANVAS_SIZE / 2,
+    );
 
     // Expose generated coordinates to parent component so copy-SVG works perfectly with current sliders
-    onExportPoints(rawTrackPoints);
+    onExportPoints(exportTrackPoints);
 
     // Apply viewport transformations
     ctx.fillStyle = "#000000";
@@ -114,7 +130,7 @@ export function VoiceprintCanvas({
       // Draw Concentric circular guides
       const gridCircleCount = 6;
       for (let i = 0; i <= gridCircleCount; i++) {
-        const r = config.radiusMin + (i / gridCircleCount) * (config.radiusMax - config.radiusMin);
+        const r = config.radiusMin + (i / gridCircleCount) * (guideRadiusMax - config.radiusMin);
         ctx.beginPath();
         ctx.arc(0, 0, r, 0, 2 * Math.PI);
         // Extremely thin faint lines
@@ -138,7 +154,7 @@ export function VoiceprintCanvas({
         const angle = (i / axesCount) * 2 * Math.PI;
         ctx.beginPath();
         const rStart = config.radiusMin - 10;
-        const rEnd = config.radiusMax + 15;
+        const rEnd = guideRadiusMax + 15;
         ctx.moveTo(rStart * Math.cos(angle), rStart * Math.sin(angle));
         ctx.lineTo(rEnd * Math.cos(angle), rEnd * Math.sin(angle));
         ctx.strokeStyle = "rgba(255, 255, 255, 0.04)";
@@ -152,12 +168,12 @@ export function VoiceprintCanvas({
       ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("0.5π", 0, -(config.radiusMax + 30));
-      ctx.fillText("1.5π", 0, (config.radiusMax + 30));
+      ctx.fillText("0.5π", 0, -(guideRadiusMax + 30));
+      ctx.fillText("1.5π", 0, (guideRadiusMax + 30));
       ctx.textAlign = "left";
-      ctx.fillText("0 / 2π", config.radiusMax + 24, 0);
+      ctx.fillText("0 / 2π", guideRadiusMax + 24, 0);
       ctx.textAlign = "right";
-      ctx.fillText("π", -(config.radiusMax + 24), 0);
+      ctx.fillText("π", -(guideRadiusMax + 24), 0);
     }
 
     // --- DRAW VECTOR VECTOR SOUND LINES (1px Pure White) ---

@@ -34,7 +34,10 @@ export interface RenderConfig {
   radiusMin: number;         // R_min
   radiusMax: number;         // R_max
   energyInfluence: number;   // 频率半径到平均振幅半径的插值比例
+  amplitudeContrast?: number; // Sigmoid contrast slope applied before amplitude scaling
   amplitudeScale: number;    // Amplitude scaling for visualization waves
+  leftScale?: number;        // Global left hemisphere scale multiplier
+  rightScale?: number;       // Global right hemisphere scale multiplier
   waveDensityMultiplier: number; // Carrier frequency divider / density controls
   showGrid: boolean;         // Show radial guides
 }

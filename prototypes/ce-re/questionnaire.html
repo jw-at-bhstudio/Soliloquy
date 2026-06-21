@@ -1,0 +1,633 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CE / RE Questionnaire</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #000;
+        --panel: #0d0d0d;
+        --line: #2b2b2b;
+        --text: #f4f4f4;
+        --muted: #989898;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 14px/1.6 "Segoe UI", Arial, sans-serif;
+      }
+
+      button,
+      input {
+        font: inherit;
+      }
+
+      .page {
+        width: min(980px, 100%);
+        margin: 0 auto;
+        padding: 24px 16px 40px;
+      }
+
+      .panel {
+        border: 1px solid var(--line);
+        background: var(--panel);
+      }
+
+      .intro,
+      #questionnaire-form,
+      .result-content {
+        padding: 16px;
+      }
+
+      .intro {
+        margin-bottom: 16px;
+      }
+
+      .eyebrow,
+      .muted,
+      .meta {
+        margin: 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      h1,
+      h2,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        margin-top: 4px;
+        font-size: 24px;
+      }
+
+      .lead {
+        margin-top: 8px;
+      }
+
+      #questionnaire-form {
+        display: grid;
+        gap: 16px;
+      }
+
+      .question {
+        display: grid;
+        gap: 10px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .question:last-child {
+        padding-bottom: 0;
+        border-bottom: 0;
+      }
+
+      .question-head,
+      .summary-row,
+      .item-row,
+      .action-row {
+        display: flex;
+        gap: 12px;
+        justify-content: space-between;
+        align-items: flex-start;
+      }
+
+      .question-key,
+      .value,
+      .mono {
+        font-family: Consolas, "Courier New", monospace;
+      }
+
+      .question-key {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .question-title {
+        margin-top: 2px;
+      }
+
+      .value {
+        min-width: 40px;
+        text-align: right;
+      }
+
+      input[type="range"] {
+        width: 100%;
+        margin: 0;
+      }
+
+      .choice-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .choice-item {
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+        padding: 8px 10px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .choice-item input[type="radio"] {
+        margin-top: 3px;
+      }
+
+      #result-panel {
+        margin-top: 16px;
+      }
+
+      #result-panel > summary {
+        cursor: pointer;
+        padding: 16px;
+        list-style: none;
+      }
+
+      #result-panel > summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .result-content {
+        display: grid;
+        gap: 16px;
+        border-top: 1px solid var(--line);
+      }
+
+      .status-box {
+        padding: 12px;
+        border: 1px solid var(--line);
+      }
+
+      .status-value {
+        font-size: 22px;
+      }
+
+      .summary-grid,
+      .item-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .summary-row,
+      .item-row {
+        padding: 10px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .summary-row:last-child,
+      .item-row:last-child {
+        border-bottom: 0;
+      }
+
+      .button {
+        border: 1px solid var(--line);
+        background: transparent;
+        color: var(--text);
+        padding: 10px 14px;
+        cursor: pointer;
+      }
+
+      .button.primary {
+        background: #fff;
+        color: #000;
+      }
+
+      @media (max-width: 720px) {
+        .question-head,
+        .summary-row,
+        .item-row,
+        .action-row {
+          flex-direction: column;
+        }
+
+        .value {
+          text-align: left;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="panel intro">
+        <p class="eyebrow">Prototype / CE RE</p>
+        <h1>Questionnaire</h1>
+        <p class="lead">上半部分完成 8 题作答（滑块）与 1 题 Y1 单选；下半部分默认收起，展开后查看均值、总分、4 主类型、接近中间带标注、band、Y1 结果与题目维度信息，并可下载单次结果 JSON。</p>
+      </section>
+
+      <form id="questionnaire-form" class="panel" aria-label="CE RE questionnaire"></form>
+
+      <details id="result-panel" class="panel">
+        <summary>查看结果</summary>
+        <div class="result-content">
+          <section>
+            <p class="eyebrow">Summary</p>
+            <h2>当前结果</h2>
+            <div class="status-box" style="margin-top: 12px">
+              <div class="status-value" id="status-value">-</div>
+              <p class="muted" id="status-caption">-</p>
+            </div>
+            <div class="summary-grid" id="summary-grid" style="margin-top: 12px"></div>
+          </section>
+
+          <section>
+            <p class="eyebrow">Items</p>
+            <h2>题目维度</h2>
+            <div class="item-list" id="item-meta-list" style="margin-top: 12px"></div>
+          </section>
+
+          <section>
+            <p class="eyebrow">Output</p>
+            <h2>单次结果</h2>
+            <p class="muted" style="margin-top: 8px">下载文件包含时间戳、8 题原始值、Y1 选择、分数摘要、4 主类型、nearCenterBand 以及每题的 dimension / facet。</p>
+            <div class="action-row" style="margin-top: 12px">
+              <button id="reset-button" class="button" type="button">Reset</button>
+              <button id="download-button" class="button primary" type="button">Download JSON</button>
+            </div>
+          </section>
+        </div>
+      </details>
+    </main>
+
+    <script>
+      (function () {
+        var DEFAULT_VALUE = 50;
+        var CE_ITEM_KEYS = ['CE1', 'CE2', 'CE3', 'CE4'];
+        var RE_ITEM_KEYS = ['RE1', 'RE2', 'RE3', 'RE4'];
+        var STATUS_BANDS = {
+          LOW: 'LOW',
+          MIDDLE: 'MIDDLE',
+          HIGH: 'HIGH',
+        };
+        var STATUS_COPY = {
+          'Clear Type': '心里已有数',
+          'Torn Type': '左右脑互博',
+          'Stuck Type': '绕不出来了',
+          'Paused Type': '还没开始想',
+        };
+        var Y1_OPTIONS = [
+          '很像我真实的声音',
+          '应该是我，但是音更低',
+          '应该是我，但是音更高',
+          '不太像我',
+        ];
+        var QUESTION_ITEMS = [
+          {
+            key: 'CE1',
+            dimension: 'CE',
+            facet: '广度-开域',
+            prompt: '当我对自己未来的方向不确定时，我会主动去了解不同的可能性。',
+          },
+          {
+            key: 'CE2',
+            dimension: 'CE',
+            facet: '广度-试探',
+            prompt: '我愿意通过不同的经历或尝试，看看什么更适合自己。',
+          },
+          {
+            key: 'CE3',
+            dimension: 'CE',
+            facet: '深度-校准',
+            prompt: '我会回头检查自己现在正在走的方向，是不是真的适合我。',
+          },
+          {
+            key: 'CE4',
+            dimension: 'CE',
+            facet: '深度-整合',
+            prompt: '我会把已经想过、试过的东西放在一起，看看它们是否指向同一个方向。',
+          },
+          {
+            key: 'RE1',
+            dimension: 'RE',
+            facet: '反复回返',
+            prompt: '我会一遍又一遍地回到同一个关于自己的问题上。',
+          },
+          {
+            key: 'RE2',
+            dimension: 'RE',
+            facet: '难以止念',
+            prompt: '一旦开始想自己该往哪里走，我就很难停下来。',
+          },
+          {
+            key: 'RE3',
+            dimension: 'RE',
+            facet: '自我推翻',
+            prompt: '我常常因为想得太多，而开始怀疑自己原本的判断。',
+          },
+          {
+            key: 'RE4',
+            dimension: 'RE',
+            facet: '行动阻滞',
+            prompt: '我对自己的方向想得越久，越不容易真正往前走。',
+          },
+        ];
+
+        var form = document.getElementById('questionnaire-form');
+        var itemMetaList = document.getElementById('item-meta-list');
+        var summaryGrid = document.getElementById('summary-grid');
+        var statusValue = document.getElementById('status-value');
+        var statusCaption = document.getElementById('status-caption');
+        var resetButton = document.getElementById('reset-button');
+        var downloadButton = document.getElementById('download-button');
+
+        function clampScore(value) {
+          var numericValue = Number(value);
+          if (!Number.isFinite(numericValue)) {
+            return DEFAULT_VALUE;
+          }
+          return Math.max(1, Math.min(99, Math.round(numericValue)));
+        }
+
+        function average(total, count) {
+          return count === 0 ? 0 : total / count;
+        }
+
+        function classifyBand(value) {
+          if (value < 45) {
+            return STATUS_BANDS.LOW;
+          }
+          if (value > 55) {
+            return STATUS_BANDS.HIGH;
+          }
+          return STATUS_BANDS.MIDDLE;
+        }
+
+        function calculateScores(rawValues) {
+          var ceTotal = CE_ITEM_KEYS.reduce(function (sum, key) {
+            return sum + clampScore(rawValues[key]);
+          }, 0);
+          var reTotal = RE_ITEM_KEYS.reduce(function (sum, key) {
+            return sum + clampScore(rawValues[key]);
+          }, 0);
+
+          return {
+            ceTotal: ceTotal,
+            reTotal: reTotal,
+            ceMean: average(ceTotal, CE_ITEM_KEYS.length),
+            reMean: average(reTotal, RE_ITEM_KEYS.length),
+          };
+        }
+
+        function deriveStatus(scores) {
+          var statusBand = {
+            ce: classifyBand(scores.ceMean),
+            re: classifyBand(scores.reMean),
+          };
+          var nearCenterBand = statusBand.ce === STATUS_BANDS.MIDDLE || statusBand.re === STATUS_BANDS.MIDDLE;
+
+          if (scores.ceMean >= 50 && scores.reMean < 50) {
+            return {
+              status: 'Clear Type',
+              statusBand: statusBand,
+              nearCenterBand: nearCenterBand,
+            };
+          }
+
+          if (scores.ceMean >= 50 && scores.reMean >= 50) {
+            return {
+              status: 'Torn Type',
+              statusBand: statusBand,
+              nearCenterBand: nearCenterBand,
+            };
+          }
+
+          if (scores.ceMean < 50 && scores.reMean >= 50) {
+            return {
+              status: 'Stuck Type',
+              statusBand: statusBand,
+              nearCenterBand: nearCenterBand,
+            };
+          }
+
+          return {
+            status: 'Paused Type',
+            statusBand: statusBand,
+            nearCenterBand: nearCenterBand,
+          };
+        }
+
+        function buildQuestionnaireResult(rawValues, createdAt) {
+          var responses = {};
+          var keys = CE_ITEM_KEYS.concat(RE_ITEM_KEYS);
+          var i;
+
+          for (i = 0; i < keys.length; i += 1) {
+            responses[keys[i]] = clampScore(rawValues[keys[i]]);
+          }
+
+          var scores = calculateScores(responses);
+          var derived = deriveStatus(scores);
+
+          return {
+            createdAt: createdAt || new Date().toISOString(),
+            Y1: collectY1(),
+            responses: responses,
+            items: QUESTION_ITEMS.map(function (item) {
+              return {
+                key: item.key,
+                dimension: item.dimension,
+                facet: item.facet,
+                prompt: item.prompt,
+                score: responses[item.key],
+              };
+            }),
+            summary: {
+              ceTotal: scores.ceTotal,
+              reTotal: scores.reTotal,
+              ceMean: scores.ceMean,
+              reMean: scores.reMean,
+              status: derived.status,
+              nearCenterBand: derived.nearCenterBand,
+              statusBand: derived.statusBand,
+            },
+          };
+        }
+
+        function createQuestionMarkup(item) {
+          return [
+            '<label class="question" for="',
+            item.key,
+            '">',
+            '<div class="question-head">',
+            '<div>',
+            '<div class="question-key">',
+            item.key,
+            '</div>',
+            '<div class="question-title">',
+            item.prompt,
+            '</div>',
+            '</div>',
+            '<div class="value" data-value-for="',
+            item.key,
+            '">',
+            String(DEFAULT_VALUE),
+            '</div>',
+            '</div>',
+            '<input id="',
+            item.key,
+            '" name="',
+            item.key,
+            '" type="range" min="1" max="99" step="1" value="',
+            String(DEFAULT_VALUE),
+            '" />',
+            '</label>',
+          ].join('');
+        }
+
+        function createY1Markup() {
+          return [
+            '<section class="question">',
+            '<div class="question-head">',
+            '<div>',
+            '<div class="question-key">Y1</div>',
+            '<div class="question-title">如果把你脑海里的 inner voice 想成一个声音，它更接近下面哪一种？</div>',
+            '</div>',
+            '</div>',
+            '<div class="choice-list">',
+            Y1_OPTIONS.map(function (option, index) {
+              return [
+                '<label class="choice-item">',
+                '<input type="radio" name="Y1" value="',
+                option,
+                '"',
+                index === 0 ? ' checked' : '',
+                ' />',
+                '<span>',
+                option,
+                '</span>',
+                '</label>',
+              ].join('');
+            }).join(''),
+            '</div>',
+            '</section>',
+          ].join('');
+        }
+
+        function renderForm() {
+          form.innerHTML = QUESTION_ITEMS.map(createQuestionMarkup).join('') + createY1Markup();
+        }
+
+        function collectResponses() {
+          return QUESTION_ITEMS.reduce(function (responses, item) {
+            var input = form.elements.namedItem(item.key);
+            responses[item.key] = Number(input && input.value ? input.value : DEFAULT_VALUE);
+            return responses;
+          }, {});
+        }
+
+        function collectY1() {
+          var selected = form.querySelector('input[name="Y1"]:checked');
+          return selected ? selected.value : Y1_OPTIONS[0];
+        }
+
+        function updateValueBadges() {
+          QUESTION_ITEMS.forEach(function (item) {
+            var input = form.elements.namedItem(item.key);
+            var output = form.querySelector('[data-value-for="' + item.key + '"]');
+            if (output) {
+              output.textContent = String(input && input.value ? input.value : DEFAULT_VALUE);
+            }
+          });
+        }
+
+        function renderSummary(result) {
+          var rows = [
+            ['CE Mean', result.summary.ceMean.toFixed(1)],
+            ['RE Mean', result.summary.reMean.toFixed(1)],
+            ['CE Total', String(result.summary.ceTotal)],
+            ['RE Total', String(result.summary.reTotal)],
+            ['Status', result.summary.status],
+            ['接近中间带', result.summary.nearCenterBand ? '是' : '否'],
+            ['CE Band', result.summary.statusBand.ce],
+            ['RE Band', result.summary.statusBand.re],
+            ['Y1', result.Y1],
+          ];
+
+          summaryGrid.innerHTML = rows
+            .map(function (row) {
+              return '<div class="summary-row"><span class="meta">' + row[0] + '</span><strong class="mono">' + row[1] + '</strong></div>';
+            })
+            .join('');
+        }
+
+        function renderItems(result) {
+          itemMetaList.innerHTML = result.items
+            .map(function (item) {
+              return (
+                '<div class="item-row">' +
+                '<div>' +
+                '<div class="question-key">' +
+                item.key +
+                '</div>' +
+                '<div>' +
+                item.dimension +
+                ' / ' +
+                item.facet +
+                '</div>' +
+                '</div>' +
+                '<div class="value">' +
+                item.score +
+                '</div>' +
+                '</div>'
+              );
+            })
+            .join('');
+        }
+
+        function renderResult() {
+          updateValueBadges();
+          var result = buildQuestionnaireResult(collectResponses());
+          statusValue.textContent = result.summary.status;
+          statusCaption.textContent =
+            (STATUS_COPY[result.summary.status] || '') + (result.summary.nearCenterBand ? ' / 接近中间带' : '');
+          renderSummary(result);
+          renderItems(result);
+          downloadButton.dataset.result = JSON.stringify(result, null, 2);
+        }
+
+        function resetForm() {
+          QUESTION_ITEMS.forEach(function (item) {
+            var input = form.elements.namedItem(item.key);
+            if (input) {
+              input.value = String(DEFAULT_VALUE);
+            }
+          });
+          var defaultY1 = form.querySelector('input[name="Y1"][value="' + Y1_OPTIONS[0] + '"]');
+          if (defaultY1) {
+            defaultY1.checked = true;
+          }
+          renderResult();
+        }
+
+        function downloadCurrentResult() {
+          var payload = downloadButton.dataset.result || '{}';
+          var blob = new Blob([payload], { type: 'application/json' });
+          var url = URL.createObjectURL(blob);
+          var anchor = document.createElement('a');
+          var stamp = new Date().toISOString().replace(/[:.]/g, '-');
+
+          anchor.href = url;
+          anchor.download = 'ce-re-result-' + stamp + '.json';
+          anchor.click();
+          URL.revokeObjectURL(url);
+        }
+
+        renderForm();
+        renderResult();
+
+        form.addEventListener('input', renderResult);
+        resetButton.addEventListener('click', resetForm);
+        downloadButton.addEventListener('click', downloadCurrentResult);
+      })();
+    </script>
+  </body>
+</html>

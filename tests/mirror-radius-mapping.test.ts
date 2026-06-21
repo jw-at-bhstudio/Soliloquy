@@ -7,6 +7,7 @@ import {
   RadiusMode,
   SideRenderMode,
 } from '../src/features/mirror/types';
+import { applyAmplitudeContrast } from '../src/features/mirror/utils/contrast';
 import { calculateTrackPoints } from '../src/features/mirror/utils/coordinateCalculators';
 import {
   computeTrackRadiusSlots,
@@ -143,6 +144,16 @@ test('invalid frequency ranges are sanitized into a legal ascending interval', (
   assert.deepEqual(sanitizeFrequencyRange(500, 100), { frequencyMin: 500, frequencyMax: 501 });
 });
 
+test('amplitude contrast preserves the mean while increasing local separation', () => {
+  const result = applyAmplitudeContrast([0.2, 0.5, 0.8], 12);
+
+  assert.equal(result.length, 3);
+  assert.ok(result[0] < 0.2);
+  assert.ok(result[2] > 0.8);
+  const mean = result.reduce((sum, value) => sum + value, 0) / result.length;
+  assert.ok(Math.abs(mean - 0.5) < 1e-6);
+});
+
 test('track points keep outer-slot geometry when the middle track is not selected', () => {
   const tracks = [
     createTrack(1, [0.1, 0.1]),
@@ -180,4 +191,39 @@ test('track points keep outer-slot geometry when the middle track is not selecte
   assert.equal(points.length, 2);
   assert.ok(Math.abs(points[0].leftPoints[0].y - 60) < 1e-6);
   assert.ok(Math.abs(points[1].leftPoints[0].y - 180) < 1e-6);
+});
+
+test('calculateTrackPoints applies left and right global scale independently', () => {
+  const tracks = [createTrack(1, [0.2, 0.2])];
+  const data = {
+    time: [0, 1],
+    f0: [100, 100],
+    tracks,
+    duration: 1,
+    sampleCount: 2,
+  };
+  const config = {
+    displayMode: DisplayMode.ENVELOPE,
+    leftTrackIndices: [0],
+    rightTrackIndices: [0],
+    leftRenderMode: SideRenderMode.SEPARATE,
+    rightRenderMode: SideRenderMode.SEPARATE,
+    radiusMode: RadiusMode.RELATIVE_HARMONIC,
+    frequencyMin: 80,
+    frequencyMax: 2000,
+    radiusMin: 60,
+    radiusMax: 180,
+    energyInfluence: 0,
+    amplitudeScale: 0,
+    amplitudeContrast: 2,
+    leftScale: 2,
+    rightScale: 1.5,
+    waveDensityMultiplier: 1,
+    showGrid: false,
+  };
+
+  const points = calculateTrackPoints(data, tracks, config, new Float32Array([0, 1]), 0, 0);
+
+  assert.ok(Math.abs(points[0].leftPoints[0].y - 120) < 1e-6);
+  assert.ok(Math.abs(points[0].rightPoints[0].y + 90) < 1e-6);
 });

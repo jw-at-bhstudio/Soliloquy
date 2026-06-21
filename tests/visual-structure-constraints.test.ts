@@ -223,7 +223,7 @@ test('MirrorWorkspace uses the agreed default render and deformation values', ()
     'utf8',
   );
 
-  assert.match(source, /displayMode: DisplayMode\.WAVEFORM/);
+  assert.match(source, /displayMode: DisplayMode\.ENVELOPE/);
   assert.match(source, /leftRenderMode: SideRenderMode\.SEPARATE/);
   assert.match(source, /rightRenderMode: SideRenderMode\.MERGED/);
   assert.match(source, /energyInfluence: 1/);
@@ -263,4 +263,17 @@ test('Analyzer side-panel copy avoids long wrapped phrases in narrow layouts', (
   assert.match(workspaceSource, />\s*N\s*</);
   assert.doesNotMatch(workspaceSource, /N = 2/);
   assert.doesNotMatch(workspaceSource, /N = 7/);
+});
+
+test('Analyzer SVG export keeps XY paths only with 1px strokes and no scaffold grid', () => {
+  const source = readFileSync(
+    path.resolve(process.cwd(), 'src/features/analyzer/components/AcousticCanvas.tsx'),
+    'utf8',
+  );
+
+  assert.match(source, /stroke-width="1" fill="none" opacity="0\.6"/);
+  assert.match(source, /stroke-width="1" fill="none" stroke-linecap="round"/);
+  assert.doesNotMatch(source, /stroke-width="1\.5"/);
+  assert.doesNotMatch(source, /const svgGrid =/);
+  assert.doesNotMatch(source, /<line x1="\$\{marginL\}"/);
 });

@@ -6,9 +6,93 @@
 import React, { useEffect, useRef, useState } from "react";
 import { FolderOpen, Play, Square, Copy, Zap } from "lucide-react";
 import { RenderConfig, DeformationParams, DisplayMode, SideRenderMode } from "../types";
+import type { MirrorPresetRecord } from "../presets/types";
 import { sanitizeFrequencyRange } from "../utils/radiusMapping";
 import { createDefaultTrackSelection, sanitizeTrackSelection } from "../utils/trackSelection";
 import { generateDemoVoiceprint } from "../utils/generators";
+
+type RuminationControlKey =
+  | "ruminationFrequency"
+  | "feedbackDecay"
+  | "ruminationStrength"
+  | "foldThreshold";
+
+type RuminationControlSpec = {
+  key: RuminationControlKey;
+  label: string;
+  description: string;
+  inputId: string;
+  min: string;
+  max: string;
+  step: string;
+  formatValue: (value: number) => string;
+};
+
+export const RUMINATION_CONTROL_SPECS: readonly RuminationControlSpec[] = [
+  {
+    key: "ruminationFrequency",
+    label: "反复 / Recurrence",
+    description: "影响反复回返的周期速度",
+    inputId: "slider-r-freq",
+    min: "0",
+    max: "10",
+    step: "0.1",
+    formatValue: (value) => `${value.toFixed(1)}Hz`,
+  },
+  {
+    key: "feedbackDecay",
+    label: "残留 / Lingering",
+    description: "影响残留拖尾的衰减速度",
+    inputId: "slider-feedback",
+    min: "0",
+    max: "0.9",
+    step: "0.01",
+    formatValue: (value) => `${(value * 100).toFixed(0)}%`,
+  },
+  {
+    key: "ruminationStrength",
+    label: "扭曲 / Distortion",
+    description: "影响时间扰动与形变强度",
+    inputId: "slider-r-amp",
+    min: "0",
+    max: "0.4",
+    step: "0.005",
+    formatValue: (value) => value.toFixed(3),
+  },
+  {
+    key: "foldThreshold",
+    label: "折返 / Collapse",
+    description: "超限部分将折返形成更强谐波",
+    inputId: "slider-folding",
+    min: "0.1",
+    max: "1.0",
+    step: "0.01",
+    formatValue: (value) => value.toFixed(2),
+  },
+] as const;
+
+export function getRuminationControlSpecs() {
+  return RUMINATION_CONTROL_SPECS;
+}
+
+const MIRROR_INPUT_COPY = {
+  voiceprintSectionTitle: "声纹输入",
+  voiceprintSectionDescription: "载入当前要绘制的声纹骨架。",
+  voiceprintImportButton: "导入声纹 JSON",
+  voiceprintSampleButton: "下载声纹示例",
+  questionnaireSectionTitle: "问卷映射",
+  questionnaireSectionDescription: "载入问卷结果，并将其映射为当前声纹的参数配置。",
+  questionnaireImportButton: "导入问卷结果 JSON",
+  compareModeLabel: "比较模式",
+  compareModeDescription: "在同一个声纹上快速切换不同问卷样本，比较可视化差异。",
+  builtInDatasetButton: "载入 20 人比较样本",
+  previousPresetButton: "上一份",
+  nextPresetButton: "下一份",
+} as const;
+
+export function getMirrorInputCopy() {
+  return MIRROR_INPUT_COPY;
+}
 
 interface FloatingControlsProps {
   config: RenderConfig;
@@ -16,6 +100,13 @@ interface FloatingControlsProps {
   deformParams: DeformationParams;
   onChangeDeformParams: (newParams: DeformationParams) => void;
   onImportJSON: (data: any) => void;
+  onImportQuestionnaireJSON: (data: unknown) => void;
+  onLoadBuiltInDataset: () => void;
+  presetRecords: MirrorPresetRecord[];
+  selectedPresetIndex: number;
+  selectedPresetId: string | null;
+  onApplyPreset: (presetId: string) => void;
+  onStepPreset: (delta: number) => void;
   onCopySVG: () => void;
   onPlayEnsemble: () => void;
   onStopEnsemble: () => void;
@@ -30,6 +121,13 @@ export function FloatingControls({
   deformParams,
   onChangeDeformParams,
   onImportJSON,
+  onImportQuestionnaireJSON,
+  onLoadBuiltInDataset,
+  presetRecords,
+  selectedPresetIndex,
+  selectedPresetId,
+  onApplyPreset,
+  onStepPreset,
   onCopySVG,
   onPlayEnsemble,
   onStopEnsemble,
@@ -38,6 +136,7 @@ export function FloatingControls({
   allowImport = true,
 }: FloatingControlsProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const questionnaireFileInputRef = useRef<HTMLInputElement | null>(null);
   const [dragActive, setDragActive] = useState<boolean>(false);
   const [copiedNotification, setCopiedNotification] = useState<boolean>(false);
   const [frequencyMinInput, setFrequencyMinInput] = useState<string>(String(config.frequencyMin ?? 80));
@@ -141,12 +240,12 @@ export function FloatingControls({
     URL.revokeObjectURL(url);
   };
 
-  const parseAndImportFile = (file: File) => {
+  const parseAndImportFile = (file: File, onImport: (json: unknown) => void) => {
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
         const json = JSON.parse(event.target?.result as string);
-        onImportJSON(json);
+        onImport(json);
       } catch (error: any) {
         alert(`导入失败: ${error.message || "无效的 JSON 格式"}`);
       }
@@ -157,7 +256,14 @@ export function FloatingControls({
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (files && files.length > 0) {
-      parseAndImportFile(files[0]);
+      parseAndImportFile(files[0], onImportJSON);
+    }
+  };
+
+  const handleQuestionnaireFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (files && files.length > 0) {
+      parseAndImportFile(files[0], onImportQuestionnaireJSON);
     }
   };
 
@@ -176,7 +282,7 @@ export function FloatingControls({
     event.stopPropagation();
     setDragActive(false);
     if (event.dataTransfer.files && event.dataTransfer.files[0]) {
-      parseAndImportFile(event.dataTransfer.files[0]);
+      parseAndImportFile(event.dataTransfer.files[0], onImportJSON);
     }
   };
 
@@ -200,10 +306,10 @@ export function FloatingControls({
           id="control-group-import"
         >
           <div className="mb-2 text-white/70" style={{ fontWeight: 400 }}>
-            数据
+            {MIRROR_INPUT_COPY.voiceprintSectionTitle}
           </div>
           <div className="mb-2 text-white/35" style={{ fontWeight: 400 }}>
-            导入与示例
+            {MIRROR_INPUT_COPY.voiceprintSectionDescription}
           </div>
 
           <div
@@ -221,7 +327,7 @@ export function FloatingControls({
           >
             <FolderOpen className="h-5 w-5" />
             <div>
-              导入 <span style={{ fontFamily: "var(--font-mono)" }}>JSON</span>
+              {MIRROR_INPUT_COPY.voiceprintImportButton}
             </div>
             <div className="text-white/35">点击或拖拽文件</div>
             <input
@@ -241,11 +347,118 @@ export function FloatingControls({
               className="cursor-pointer text-white/55 underline transition-colors hover:text-white"
               id="btn-sample-download"
             >
-              下载示例 <span style={{ fontFamily: "var(--font-mono)" }}>JSON</span>
+              {MIRROR_INPUT_COPY.voiceprintSampleButton}
             </button>
           </div>
         </section>
       )}
+
+      <section className="mb-5 rounded border border-white/10 bg-white/[0.03] p-3" id="control-group-questionnaire-presets">
+        <div className="mb-2 text-white/70" style={{ fontWeight: 400 }}>
+          {MIRROR_INPUT_COPY.questionnaireSectionTitle}
+        </div>
+        <div className="mb-2 text-white/35" style={{ fontWeight: 400 }}>
+          {MIRROR_INPUT_COPY.questionnaireSectionDescription}
+        </div>
+
+        <button
+          onClick={() => questionnaireFileInputRef.current?.click()}
+          className="flex w-full cursor-pointer items-center justify-center gap-2 rounded border border-white/10 bg-black px-3 py-2.5 text-white/70 transition-colors hover:border-white/30 hover:text-white"
+          type="button"
+        >
+          <FolderOpen className="h-4 w-4" />
+          {MIRROR_INPUT_COPY.questionnaireImportButton}
+        </button>
+        <input
+          type="file"
+          ref={questionnaireFileInputRef}
+          onChange={handleQuestionnaireFileChange}
+          accept=".json"
+          className="hidden"
+        />
+
+        <div className="mt-3 text-white/35" style={{ fontWeight: 400 }}>
+          {MIRROR_INPUT_COPY.compareModeLabel}
+        </div>
+        <div className="mt-1 text-white/25">
+          {MIRROR_INPUT_COPY.compareModeDescription}
+        </div>
+
+        <button
+          onClick={onLoadBuiltInDataset}
+          className="mt-2 flex w-full cursor-pointer items-center justify-center gap-2 rounded border border-white/10 bg-white/[0.03] px-3 py-2.5 text-white/70 transition-colors hover:border-white/30 hover:bg-white/[0.06] hover:text-white"
+          type="button"
+        >
+          {MIRROR_INPUT_COPY.builtInDatasetButton}
+        </button>
+
+        <div className="mt-3 flex items-center justify-between text-white/35">
+          <span>已载入 {presetRecords.length} 条</span>
+          <span>单击条目即可应用</span>
+        </div>
+
+        <div className="mt-3 flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={() => onStepPreset(-1)}
+            disabled={selectedPresetIndex <= 0}
+            className="rounded border border-white/10 bg-black px-3 py-1.5 text-white/70 transition-colors hover:border-white/30 hover:text-white disabled:cursor-not-allowed disabled:border-white/5 disabled:text-white/20"
+          >
+            {MIRROR_INPUT_COPY.previousPresetButton}
+          </button>
+          <span className="text-white/45" style={{ fontFamily: "var(--font-mono)" }}>
+            {presetRecords.length === 0 ? "0 / 0" : `${selectedPresetIndex + 1} / ${presetRecords.length}`}
+          </span>
+          <button
+            type="button"
+            onClick={() => onStepPreset(1)}
+            disabled={selectedPresetIndex === -1 || selectedPresetIndex >= presetRecords.length - 1}
+            className="rounded border border-white/10 bg-black px-3 py-1.5 text-white/70 transition-colors hover:border-white/30 hover:text-white disabled:cursor-not-allowed disabled:border-white/5 disabled:text-white/20"
+          >
+            {MIRROR_INPUT_COPY.nextPresetButton}
+          </button>
+        </div>
+
+        {presetRecords.length > 0 ? (
+          <div className="mt-3 space-y-2">
+            {presetRecords.map((record) => {
+              const selected = record.id === selectedPresetId;
+              const sourceLabel =
+                record.roleLabel ??
+                (record.sourceType === "questionnaire-result" ? "单次结果" : "数据集");
+
+              return (
+                <button
+                  key={record.id}
+                  type="button"
+                  onClick={() => onApplyPreset(record.id)}
+                  className={`w-full rounded border px-3 py-2 text-left transition-colors ${
+                    selected
+                      ? "border-white bg-white text-black"
+                      : "border-white/10 bg-black text-white/70 hover:border-white/30 hover:text-white"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span>{record.label}</span>
+                    <span className={selected ? "text-black/70" : "text-white/35"}>{sourceLabel}</span>
+                  </div>
+                  <div className={`mt-1 ${selected ? "text-black/70" : "text-white/45"}`}>
+                    {record.status}
+                    {record.nearCenterBand ? " / 接近中间带" : ""}
+                  </div>
+                  <div className={`mt-1 ${selected ? "text-black/70" : "text-white/35"}`}>
+                    CE {record.ceMean.toFixed(1)} / RE {record.reMean.toFixed(1)} / {record.Y1}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="mt-3 rounded border border-dashed border-white/10 px-3 py-4 text-center text-white/35">
+            还没有问卷预设
+          </div>
+        )}
+      </section>
 
       <section className="mb-5 rounded border border-white/10 bg-white/[0.02] p-3" id="control-group-mirror-params">
         <div className="mb-4 flex items-center gap-2 text-white" style={{ fontWeight: 400 }}>
@@ -360,93 +573,35 @@ export function FloatingControls({
             形变
           </div>
 
-          <div className="mb-3.5">
-            <div className="mb-1 flex justify-between">
-              <span className="text-stone-300">反馈残留</span>
-              <span className="text-white" style={{ fontFamily: "var(--font-mono)" }}>
-                {(deformParams.feedbackDecay * 100).toFixed(0)}%
-              </span>
+          {RUMINATION_CONTROL_SPECS.map((control, index) => (
+            <div
+              key={control.key}
+              className={index === RUMINATION_CONTROL_SPECS.length - 1 ? undefined : "mb-3.5"}
+            >
+              <div className="mb-1 flex justify-between">
+                <span className="text-stone-300">{control.label}</span>
+                <span className="text-white" style={{ fontFamily: "var(--font-mono)" }}>
+                  {control.formatValue(deformParams[control.key])}
+                </span>
+              </div>
+              <input
+                type="range"
+                min={control.min}
+                max={control.max}
+                step={control.step}
+                value={deformParams[control.key]}
+                onChange={(event) =>
+                  onChangeDeformParams({
+                    ...deformParams,
+                    [control.key]: parseFloat(event.target.value),
+                  })
+                }
+                className="h-1 w-full cursor-pointer rounded bg-stone-800 accent-white"
+                id={control.inputId}
+              />
+              <span className="mt-0.5 block text-stone-500">{control.description}</span>
             </div>
-            <input
-              type="range"
-              min="0"
-              max="0.9"
-              step="0.01"
-              value={deformParams.feedbackDecay}
-              onChange={(event) =>
-                onChangeDeformParams({ ...deformParams, feedbackDecay: parseFloat(event.target.value) })
-              }
-              className="h-1 w-full cursor-pointer rounded bg-stone-800 accent-white"
-              id="slider-feedback"
-            />
-            <span className="mt-0.5 block text-stone-500">控制残留的衰减速度</span>
-          </div>
-
-          <div className="mb-3.5">
-            <div className="mb-1 flex justify-between">
-              <span className="text-stone-300">折叠阈值</span>
-              <span className="text-white" style={{ fontFamily: "var(--font-mono)" }}>
-                {deformParams.foldThreshold.toFixed(2)}
-              </span>
-            </div>
-            <input
-              type="range"
-              min="0.1"
-              max="1.0"
-              step="0.01"
-              value={deformParams.foldThreshold}
-              onChange={(event) =>
-                onChangeDeformParams({ ...deformParams, foldThreshold: parseFloat(event.target.value) })
-              }
-              className="h-1 w-full cursor-pointer rounded bg-stone-800 accent-white"
-              id="slider-folding"
-            />
-            <span className="mt-0.5 block text-stone-500">超限部分将折返形成更强的谐波</span>
-          </div>
-
-          <div className="mb-3.5">
-            <div className="mb-1 flex justify-between">
-              <span className="text-stone-300">调制频率</span>
-              <span className="text-white" style={{ fontFamily: "var(--font-mono)" }}>
-                {deformParams.ruminationFrequency.toFixed(1)}Hz
-              </span>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="10"
-              step="0.1"
-              value={deformParams.ruminationFrequency}
-              onChange={(event) =>
-                onChangeDeformParams({ ...deformParams, ruminationFrequency: parseFloat(event.target.value) })
-              }
-              className="h-1 w-full cursor-pointer rounded bg-stone-800 accent-white"
-              id="slider-r-freq"
-            />
-            <span className="mt-0.5 block text-stone-500">影响形变的周期变化速度</span>
-          </div>
-
-          <div>
-            <div className="mb-1 flex justify-between">
-              <span className="text-stone-300">调制强度</span>
-              <span className="text-white" style={{ fontFamily: "var(--font-mono)" }}>
-                {deformParams.ruminationStrength.toFixed(3)}
-              </span>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="0.4"
-              step="0.005"
-              value={deformParams.ruminationStrength}
-              onChange={(event) =>
-                onChangeDeformParams({ ...deformParams, ruminationStrength: parseFloat(event.target.value) })
-              }
-              className="h-1 w-full cursor-pointer rounded bg-stone-800 accent-white"
-              id="slider-r-amp"
-            />
-            <span className="mt-0.5 block text-stone-500">影响形变幅度</span>
-          </div>
+          ))}
         </div>
 
         <div id="sec-orbital-rendering">

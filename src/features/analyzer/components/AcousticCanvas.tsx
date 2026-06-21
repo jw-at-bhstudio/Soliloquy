@@ -428,15 +428,14 @@ export default function AcousticCanvas({
         }
       }
       svgPathContent += '  <!-- 加性合成叠加总波形曲线 -->\n';
-      svgPathContent += `  <path d="${pathD}" stroke="#000000" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" />\n`;
+      svgPathContent += `  <path d="${pathD}" stroke="#000000" stroke-width="1" fill="none" stroke-linecap="round" stroke-linejoin="round" />\n`;
     }
 
     // Assemble full XML string
     const svgHeader = `<?xml version="1.0" encoding="utf-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">\n`;
-    const svgGrid = `  <!-- 精密示波器 X-Y 坐标系与基础网格 (黑色，导入白底图纸时极度清晰) -->\n  <line x1="${marginL}" y1="${marginT}" x2="${marginL}" y2="${marginT + drawH}" stroke="#dddddd" stroke-width="1.5" />\n  <line x1="${marginL}" y1="${centerY}" x2="${marginL + drawW}" y2="${centerY}" stroke="#dddddd" stroke-width="1.5" />\n`;
     const svgFooter = `</svg>`;
     
-    const fullSVGString = svgHeader + svgGrid + svgPathContent + svgFooter;
+    const fullSVGString = svgHeader + svgPathContent + svgFooter;
 
     navigator.clipboard.writeText(fullSVGString)
       .then(() => {

@@ -4,6 +4,7 @@
  */
 
 import { VoiceprintData, VoiceprintTrack, RenderConfig, DisplayMode } from "../types";
+import { applyAmplitudeContrast } from "./contrast";
 import { computeTrackRadiusSlots } from "./radiusMapping";
 import { resolveTrackRenderSeries } from "./trackSelection";
 
@@ -16,6 +17,35 @@ export interface TrackLinePoints {
   harmonicOrder: number;
   leftPoints: Point2D[];
   rightPoints: Point2D[];
+}
+
+function measureDistance(point: Point2D, cx: number, cy: number): number {
+  return Math.hypot(point.x - cx, point.y - cy);
+}
+
+function inferGuideRadius(
+  trackLines: TrackLinePoints[],
+  cx: number,
+  cy: number,
+  fallbackRadius?: number,
+): number | undefined {
+  const maxPointRadius = trackLines.reduce((maxRadius, line) => {
+    for (const point of line.leftPoints) {
+      maxRadius = Math.max(maxRadius, measureDistance(point, cx, cy));
+    }
+    for (const point of line.rightPoints) {
+      maxRadius = Math.max(maxRadius, measureDistance(point, cx, cy));
+    }
+    return maxRadius;
+  }, 0);
+
+  const safeFallback =
+    typeof fallbackRadius === "number" && Number.isFinite(fallbackRadius) && fallbackRadius > 0
+      ? fallbackRadius
+      : 0;
+  const resolved = Math.max(safeFallback, maxPointRadius);
+
+  return resolved > 0 ? resolved : undefined;
 }
 
 /**
@@ -59,7 +89,10 @@ export function calculateTrackPoints(
     radiusMin,
     radiusMax,
     energyInfluence,
+    amplitudeContrast = 2,
     amplitudeScale,
+    leftScale = 1,
+    rightScale = 1,
     waveDensityMultiplier
   } = config;
 
@@ -107,6 +140,12 @@ export function calculateTrackPoints(
 
     const leftPoints: Point2D[] = [];
     const rightPoints: Point2D[] = [];
+    const leftAmplitudes = leftSeriesItem
+      ? applyAmplitudeContrast(leftSeriesItem.amplitudes, amplitudeContrast)
+      : [];
+    const rightAmplitudes = rightSeriesItem
+      ? applyAmplitudeContrast(rightSeriesItem.amplitudes, amplitudeContrast)
+      : [];
 
     // 1. Generate Left semisphere points (original)
     // Angles: 0.5*PI (top) -> 1.5*PI (bottom)
@@ -116,7 +155,7 @@ export function calculateTrackPoints(
         const theta = 0.5 * Math.PI + u * Math.PI; // Go from top to bottom
 
         let waveOffset = 0;
-        const amp = leftSeriesItem.amplitudes[j] ?? 0;
+        const amp = leftAmplitudes[j] ?? 0;
 
         if (displayMode === DisplayMode.ENVELOPE) {
           waveOffset = amp * amplitudeScale;
@@ -127,7 +166,7 @@ export function calculateTrackPoints(
           waveOffset = amp * amplitudeScale * Math.sin(phase);
         }
 
-        const r = Math.max(1, leftRadius + waveOffset);
+        const r = Math.max(1, (leftRadius + waveOffset) * leftScale);
         leftPoints.push({
           x: cx + r * Math.cos(theta),
           y: cy + r * Math.sin(theta)
@@ -146,7 +185,7 @@ export function calculateTrackPoints(
         // Reversed lookup: angle 1.5*PI corresponds to t = T (j = M-1)
         // angle 2.5*PI corresponds to t = 0 (j = 0)
         const j = (M - 1) - p;
-        const amp = rightSeriesItem.amplitudes[j] ?? 0;
+        const amp = rightAmplitudes[j] ?? 0;
 
         let waveOffset = 0;
         if (displayMode === DisplayMode.ENVELOPE) {
@@ -157,7 +196,7 @@ export function calculateTrackPoints(
           waveOffset = amp * amplitudeScale * Math.sin(phase);
         }
 
-        const r = Math.max(1, rightRadius + waveOffset);
+        const r = Math.max(1, (rightRadius + waveOffset) * rightScale);
         rightPoints.push({
           x: cx + r * Math.cos(theta),
           y: cy + r * Math.sin(theta)
@@ -181,9 +220,17 @@ export function calculateTrackPoints(
 export function generateStandaloneSVGString(
   trackLines: TrackLinePoints[],
   canvasWidth: number,
-  canvasHeight: number
+  canvasHeight: number,
+  radiusMax?: number,
 ): string {
   let pathsXml = "";
+  const cx = canvasWidth / 2;
+  const cy = canvasHeight / 2;
+  const resolvedGuideRadius = inferGuideRadius(trackLines, cx, cy, radiusMax);
+  const guideCircleXml =
+    typeof resolvedGuideRadius === "number"
+      ? `  <circle cx="${cx}" cy="${cy}" r="${resolvedGuideRadius}" stroke="#000000" stroke-width="1" fill="none" class="radius-max-guide" />\n`
+      : "";
 
   trackLines.forEach((tl) => {
     // 1. Compile Left Hemisphere path
@@ -191,7 +238,7 @@ export function generateStandaloneSVGString(
       const d = tl.leftPoints.reduce((acc, pt, idx) => {
         return acc + (idx === 0 ? `M ${pt.x.toFixed(2)},${pt.y.toFixed(2)}` : ` L ${pt.x.toFixed(2)},${pt.y.toFixed(2)}`);
       }, "");
-      pathsXml += `  <path d="${d}" stroke="#000000" stroke-width="1.0" fill="none" class="left-track-${tl.harmonicOrder}" />\n`;
+      pathsXml += `  <path d="${d}" stroke="#000000" stroke-width="1" fill="none" class="left-track-${tl.harmonicOrder}" />\n`;
     }
 
     // 2. Compile Right Hemisphere path
@@ -199,13 +246,13 @@ export function generateStandaloneSVGString(
       const d = tl.rightPoints.reduce((acc, pt, idx) => {
         return acc + (idx === 0 ? `M ${pt.x.toFixed(2)},${pt.y.toFixed(2)}` : ` L ${pt.x.toFixed(2)},${pt.y.toFixed(2)}`);
       }, "");
-      pathsXml += `  <path d="${d}" stroke="#000000" stroke-width="1.0" fill="none" class="right-track-${tl.harmonicOrder}" />\n`;
+      pathsXml += `  <path d="${d}" stroke="#000000" stroke-width="1" fill="none" class="right-track-${tl.harmonicOrder}" />\n`;
     }
   });
 
   return `<?xml version="1.0" encoding="utf-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${canvasWidth} ${canvasHeight}" width="${canvasWidth}" height="${canvasHeight}">
   <g id="specular-rumination-voiceprint">
-${pathsXml}  </g>
+${guideCircleXml}${pathsXml}  </g>
 </svg>`;
 }

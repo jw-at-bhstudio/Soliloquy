@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CE / RE Distribution</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #000;
+        --panel: #0d0d0d;
+        --line: #2b2b2b;
+        --text: #f4f4f4;
+        --muted: #989898;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 14px/1.6 "Segoe UI", Arial, sans-serif;
+      }
+
+      button,
+      input {
+        font: inherit;
+      }
+
+      .page {
+        width: min(720px, 100%);
+        margin: 0 auto;
+        padding: 16px 12px 32px;
+        display: grid;
+        gap: 12px;
+      }
+
+      .panel {
+        border: 1px solid var(--line);
+        background: var(--panel);
+        padding: 14px;
+      }
+
+      .eyebrow,
+      .muted,
+      .meta,
+      .empty {
+        margin: 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      h1,
+      h2,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        margin-top: 4px;
+        font-size: 24px;
+      }
+
+      h2 {
+        font-size: 16px;
+      }
+
+      .lead {
+        margin-top: 8px;
+      }
+
+      .stack {
+        display: grid;
+        gap: 12px;
+      }
+
+      .file-field {
+        display: grid;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .file-label {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      input[type="file"] {
+        width: 100%;
+        border: 1px solid var(--line);
+        background: transparent;
+        color: var(--text);
+        padding: 10px 12px;
+      }
+
+      .status-text {
+        min-height: 20px;
+      }
+
+      .distribution,
+      .list {
+        display: grid;
+        gap: 0;
+        margin-top: 12px;
+      }
+
+      .distribution-row,
+      .list-item {
+        display: grid;
+        gap: 8px;
+        padding: 10px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .distribution-row {
+        grid-template-columns: 1fr auto;
+        align-items: baseline;
+      }
+
+      .list-item:last-child,
+      .distribution-row:last-child {
+        border-bottom: 0;
+      }
+
+      .mono {
+        font-family: Consolas, "Courier New", monospace;
+      }
+
+      .item-head {
+        display: flex;
+        gap: 12px;
+        justify-content: space-between;
+        align-items: baseline;
+      }
+
+      .item-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 12px;
+      }
+
+      .badge {
+        display: inline-block;
+        border: 1px solid var(--line);
+        padding: 2px 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="panel">
+        <p class="eyebrow">Prototype / CE RE</p>
+        <h1>Distribution</h1>
+        <p class="lead">直接通过 file:// 打开页面后，选择本地 dataset.json，查看角色分布、4 主类型状态分布、Y1 分布，以及个体是否接近中间带。</p>
+        <label class="file-field" for="dataset-input">
+          <span class="file-label">dataset.json</span>
+          <input id="dataset-input" type="file" accept=".json,application/json" />
+        </label>
+        <p id="status-text" class="muted status-text">尚未选择文件。</p>
+      </section>
+
+      <section class="panel">
+        <p class="eyebrow">Dataset</p>
+        <h2>Role Distribution</h2>
+        <div id="role-distribution" class="distribution">
+          <p class="empty">选择本地 dataset.json 后显示。</p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <p class="eyebrow">Dataset</p>
+        <h2>Status Distribution</h2>
+        <div id="status-distribution" class="distribution">
+          <p class="empty">选择本地 dataset.json 后显示。</p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <p class="eyebrow">Dataset</p>
+        <h2>Y1 Distribution</h2>
+        <div id="y1-distribution" class="distribution">
+          <p class="empty">选择本地 dataset.json 后显示。</p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <p class="eyebrow">Dataset</p>
+        <h2>Individuals</h2>
+        <div id="individual-list" class="list">
+          <p class="empty">选择本地 dataset.json 后显示。</p>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      (function () {
+        var ROLE_META = [
+          { key: 'student', label: '学员' },
+          { key: 'instructor', label: '讲师' },
+          { key: 'organizer', label: '组委' },
+        ];
+        var STATUS_META = [
+          { key: 'Clear Type', label: 'Clear Type' },
+          { key: 'Torn Type', label: 'Torn Type' },
+          { key: 'Stuck Type', label: 'Stuck Type' },
+          { key: 'Paused Type', label: 'Paused Type' },
+        ];
+        var Y1_META = [
+          { key: '很像我真实的声音', label: '很像我真实的声音' },
+          { key: '应该是我，但是音更低', label: '应该是我，但是音更低' },
+          { key: '应该是我，但是音更高', label: '应该是我，但是音更高' },
+          { key: '不太像我', label: '不太像我' },
+        ];
+
+        var datasetInput = document.getElementById('dataset-input');
+        var statusText = document.getElementById('status-text');
+        var roleDistributionNode = document.getElementById('role-distribution');
+        var statusDistributionNode = document.getElementById('status-distribution');
+        var y1DistributionNode = document.getElementById('y1-distribution');
+        var individualListNode = document.getElementById('individual-list');
+
+        function escapeHtml(value) {
+          return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+        }
+
+        function summarizeDataset(dataset) {
+          var entries = Array.isArray(dataset) ? dataset : [];
+
+          return {
+            totalCount: entries.length,
+            roleDistribution: ROLE_META.map(function (item) {
+              return {
+                key: item.key,
+                label: item.label,
+                count: entries.filter(function (entry) {
+                  return entry && entry.role === item.key;
+                }).length,
+              };
+            }),
+            statusDistribution: STATUS_META.map(function (item) {
+              return {
+                key: item.key,
+                label: item.label,
+                count: entries.filter(function (entry) {
+                  return entry && entry.status === item.key;
+                }).length,
+              };
+            }),
+            y1Distribution: Y1_META.map(function (item) {
+              return {
+                key: item.key,
+                label: item.label,
+                count: entries.filter(function (entry) {
+                  return entry && entry.Y1 === item.key;
+                }).length,
+              };
+            }),
+            entries: entries,
+          };
+        }
+
+        function renderEmpty(node, message) {
+          node.innerHTML = '<p class="empty">' + escapeHtml(message) + '</p>';
+        }
+
+        function renderDistribution(node, items) {
+          if (!items.length) {
+            renderEmpty(node, '暂无数据。');
+            return;
+          }
+
+          node.innerHTML = items
+            .map(function (item) {
+              return (
+                '<div class="distribution-row">' +
+                '<span>' +
+                escapeHtml(item.label || item.key) +
+                '</span>' +
+                '<strong class="mono">' +
+                escapeHtml(item.count) +
+                '</strong>' +
+                '</div>'
+              );
+            })
+            .join('');
+        }
+
+        function renderIndividuals(entries) {
+          if (!entries.length) {
+            renderEmpty(individualListNode, '暂无个体数据。');
+            return;
+          }
+
+          individualListNode.innerHTML = entries
+            .map(function (entry) {
+              var band = entry && entry.statusBand ? String(entry.statusBand.ce || '-') + '/' + String(entry.statusBand.re || '-') : '-';
+              var nearCenterText = entry && entry.nearCenterBand ? '接近中间带' : '不接近中间带';
+              return (
+                '<article class="list-item">' +
+                '<div class="item-head">' +
+                '<strong class="mono">' +
+                escapeHtml(entry && entry.id ? entry.id : '-') +
+                '</strong>' +
+                '<span>' +
+                escapeHtml(entry && entry.roleLabel ? entry.roleLabel : entry && entry.role ? entry.role : '-') +
+                '</span>' +
+                '</div>' +
+                '<div>' +
+                escapeHtml(entry && entry.status ? entry.status : '-') +
+                '</div>' +
+                '<div class="item-meta meta">' +
+                '<span class="badge mono">CE ' +
+                escapeHtml(entry && typeof entry.ceMean === 'number' ? entry.ceMean.toFixed(1) : '-') +
+                '</span>' +
+                '<span class="badge mono">RE ' +
+                escapeHtml(entry && typeof entry.reMean === 'number' ? entry.reMean.toFixed(1) : '-') +
+                '</span>' +
+                '<span class="badge mono">' +
+                escapeHtml(band) +
+                '</span>' +
+                '<span class="badge">' +
+                escapeHtml(nearCenterText) +
+                '</span>' +
+                '<span class="badge">' +
+                'Y1: ' +
+                escapeHtml(entry && entry.Y1 ? entry.Y1 : '-') +
+                '</span>' +
+                '</div>' +
+                '</article>'
+              );
+            })
+            .join('');
+        }
+
+        function renderSummary(summary, fileName) {
+          statusText.textContent = '已载入 ' + fileName + '，共 ' + summary.totalCount + ' 条记录。';
+          renderDistribution(roleDistributionNode, summary.roleDistribution);
+          renderDistribution(statusDistributionNode, summary.statusDistribution);
+          renderDistribution(y1DistributionNode, summary.y1Distribution);
+          renderIndividuals(summary.entries);
+        }
+
+        function renderError(message) {
+          statusText.textContent = message;
+          renderEmpty(roleDistributionNode, message);
+          renderEmpty(statusDistributionNode, message);
+          renderEmpty(y1DistributionNode, message);
+          renderEmpty(individualListNode, message);
+        }
+
+        datasetInput.addEventListener('change', function (event) {
+          var input = event.target;
+          var file = input.files && input.files[0];
+
+          if (!file) {
+            renderError('未选择文件。');
+            return;
+          }
+
+          statusText.textContent = '正在读取 ' + file.name + '...';
+
+          var reader = new FileReader();
+
+          reader.onload = function () {
+            try {
+              var text = String(reader.result || '');
+              var dataset = JSON.parse(text);
+              var summary = summarizeDataset(dataset);
+              renderSummary(summary, file.name);
+            } catch (error) {
+              renderError('JSON 解析失败，请确认所选文件是有效的 dataset.json。');
+              console.error(error);
+            }
+          };
+
+          reader.onerror = function () {
+            renderError('文件读取失败，请重新选择本地 dataset.json。');
+          };
+
+          reader.readAsText(file, 'utf8');
+        });
+      })();
+    </script>
+  </body>
+</html>

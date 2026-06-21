@@ -21,6 +21,10 @@ import {
 } from './utils/coordinateCalculators';
 import { applyDeformations } from './utils/deformations';
 import { generateDemoVoiceprint, validateAndParseVoiceprint } from './utils/generators';
+import { mapPresetToMirrorState } from './presets/mapping';
+import { loadBuiltInSampleDataset } from './presets/sampleDataset';
+import type { MirrorPresetRecord } from './presets/types';
+import { parseQuestionnairePresets } from './presets/questionnaireAdapter';
 import { sanitizeFrequencyRange } from './utils/radiusMapping';
 import { createDefaultTrackSelection, sanitizeTrackSelection } from './utils/trackSelection';
 import {
@@ -37,6 +41,26 @@ interface MirrorWorkspaceProps {
   source: MirrorSessionSource;
 }
 
+export function mergeMirrorPresetConfig(
+  currentConfig: RenderConfig,
+  presetPatch: Partial<RenderConfig>,
+): RenderConfig {
+  return {
+    ...currentConfig,
+    ...presetPatch,
+    displayMode: currentConfig.displayMode,
+    showGrid: currentConfig.showGrid,
+  };
+}
+
+export function getNextPresetIndex(currentIndex: number, total: number, delta: number): number {
+  if (total <= 0) {
+    return -1;
+  }
+
+  return Math.max(0, Math.min(total - 1, currentIndex + delta));
+}
+
 export default function MirrorWorkspace({
   initialVoiceprint,
   sessionName,
@@ -50,7 +74,7 @@ export default function MirrorWorkspace({
   const currentTrackPoints = useRef<TrackLinePoints[]>([]);
 
   const [config, setConfig] = useState<RenderConfig>({
-    displayMode: DisplayMode.WAVEFORM,
+    displayMode: DisplayMode.ENVELOPE,
     leftTrackIndices: createDefaultTrackSelection(initialVoiceprint?.tracks.length ?? 16, 12),
     rightTrackIndices: createDefaultTrackSelection(initialVoiceprint?.tracks.length ?? 16, 10),
     leftRenderMode: SideRenderMode.SEPARATE,
@@ -76,6 +100,10 @@ export default function MirrorWorkspace({
   const [playbackTime, setPlaybackTime] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [showExplanation, setShowExplanation] = useState<boolean>(false);
+  const [presetRecords, setPresetRecords] = useState<MirrorPresetRecord[]>([]);
+  const [selectedPresetIndex, setSelectedPresetIndex] = useState<number>(-1);
+  const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
+  const [presetSourceLabel, setPresetSourceLabel] = useState<string | null>(null);
 
   useEffect(() => {
     if (!initialVoiceprint) {
@@ -167,8 +195,74 @@ export default function MirrorWorkspace({
     }
   };
 
+  const applyPresetRecord = (record: MirrorPresetRecord, recordIndex: number) => {
+    const presetState = mapPresetToMirrorState(record);
+    handleStopEnsemble();
+    setConfig((prev) => mergeMirrorPresetConfig(prev, presetState.renderConfigPatch));
+    setDeformParams((prev) => ({
+      ...prev,
+      ...presetState.deformParamsPatch,
+    }));
+    setSelectedPresetIndex(recordIndex);
+    setSelectedPresetId(record.id);
+    setPresetSourceLabel(presetState.meta.presetLabel);
+  };
+
+  const handleApplyPreset = (presetId: string) => {
+    const recordIndex = presetRecords.findIndex((item) => item.id === presetId);
+    if (recordIndex < 0) {
+      return;
+    }
+
+    applyPresetRecord(presetRecords[recordIndex], recordIndex);
+  };
+
+  const handleStepPreset = (delta: number) => {
+    const nextIndex = getNextPresetIndex(selectedPresetIndex, presetRecords.length, delta);
+    if (nextIndex < 0) {
+      return;
+    }
+
+    applyPresetRecord(presetRecords[nextIndex], nextIndex);
+  };
+
+  const handleLoadBuiltInDataset = () => {
+    const records = loadBuiltInSampleDataset();
+    setPresetRecords(records);
+
+    if (records[0]) {
+      applyPresetRecord(records[0], 0);
+    } else {
+      setSelectedPresetIndex(-1);
+      setSelectedPresetId(null);
+      setPresetSourceLabel(null);
+    }
+  };
+
+  const handleImportQuestionnaireJSON = (fileObject: unknown) => {
+    try {
+      const records = parseQuestionnairePresets(fileObject);
+      setPresetRecords(records);
+
+      if (records[0]) {
+        applyPresetRecord(records[0], 0);
+      } else {
+        setSelectedPresetIndex(-1);
+        setSelectedPresetId(null);
+        setPresetSourceLabel(null);
+      }
+    } catch (error: any) {
+      alert(`问卷预设加载失败: ${error.message}`);
+    }
+  };
+
   const handleCopySVG = () => {
-    const svgCode = generateStandaloneSVGString(currentTrackPoints.current, 550, 550);
+    const svgCode = generateStandaloneSVGString(
+      currentTrackPoints.current,
+      550,
+      550,
+      config.radiusMax,
+    );
     navigator.clipboard.writeText(svgCode);
   };
 
@@ -221,6 +315,13 @@ export default function MirrorWorkspace({
         <div className={getStatusStripClassName()}>
           <span className="text-white/40">来源</span>
           <span className="text-white">{sourceLabel}</span>
+          {presetSourceLabel && (
+            <>
+              <span className="text-white/30">/</span>
+              <span className="text-white/40">问卷预设</span>
+              <span className="text-white">{presetSourceLabel}</span>
+            </>
+          )}
           <span className="text-white/30">/</span>
           <span className="text-white/40">时长</span>
           <span className="text-white" style={{ fontFamily: 'var(--font-mono)' }}>
@@ -256,6 +357,13 @@ export default function MirrorWorkspace({
             deformParams={deformParams}
             onChangeDeformParams={setDeformParams}
             onImportJSON={handleImportJSON}
+            onImportQuestionnaireJSON={handleImportQuestionnaireJSON}
+            onLoadBuiltInDataset={handleLoadBuiltInDataset}
+            presetRecords={presetRecords}
+            selectedPresetIndex={selectedPresetIndex}
+            selectedPresetId={selectedPresetId}
+            onApplyPreset={handleApplyPreset}
+            onStepPreset={handleStepPreset}
             onCopySVG={handleCopySVG}
             onPlayEnsemble={handlePlayEnsemble}
             onStopEnsemble={handleStopEnsemble}
