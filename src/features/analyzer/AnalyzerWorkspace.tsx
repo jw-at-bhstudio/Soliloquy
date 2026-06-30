@@ -12,7 +12,7 @@ import TrackList from './components/TrackList';
 import { synthesizeAdditiveSynthesizer } from './utils/dsp';
 import { createAnalyzerJobRunner } from './utils/analyzerJobRunner';
 import { VoiceprintData } from '../voiceprint/types';
-import { DEFAULT_TARGET_RMS, normalizeAudioSamples } from '../../shared/audio/normalization';
+import { DEFAULT_TARGET_RMS, normalizeAudioSamples, normalizeAudioSamplesByRobustPeak } from '../../shared/audio/normalization';
 import {
   getContentStackClassName,
   getPageContainerClassName,
@@ -56,6 +56,7 @@ export default function AnalyzerWorkspace() {
   const [isPlayingSynthesized, setIsPlayingSynthesized] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [normalizePlayback, setNormalizePlayback] = useState<boolean>(true);
+  const [volumeProcessingMode, setVolumeProcessingMode] = useState<'off' | 'robust-peak'>('off');
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const originalSourceRef = useRef<AudioBufferSourceNode | null>(null);
@@ -178,7 +179,11 @@ export default function AnalyzerWorkspace() {
     fileName: string,
     origin: 'upload' | 'mic' = sourceType,
   ) => {
-    enqueueJob({ audioData, sampleRate, fileName, sourceType: origin });
+    const processedAudio =
+      volumeProcessingMode === 'robust-peak'
+        ? normalizeAudioSamplesByRobustPeak(audioData)
+        : audioData;
+    enqueueJob({ audioData: processedAudio, sampleRate, fileName, sourceType: origin });
   };
 
   const handleToggleTrack = (idx: number) => {
@@ -441,6 +446,39 @@ export default function AnalyzerWorkspace() {
                     className="h-4 w-4 cursor-pointer border border-white/10 bg-black accent-white"
                   />
                 </label>
+
+                <div className="flex flex-col gap-2 rounded border border-white/5 bg-black px-3 py-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-white/60">导入音量处理</span>
+                    <span className="text-white/30" style={{ fontFamily: 'var(--font-mono)' }}>
+                      {volumeProcessingMode === 'robust-peak' ? 'ROBUST_PEAK' : 'OFF'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 rounded border border-white/10 bg-black p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setVolumeProcessingMode('off')}
+                      className={`py-1.5 transition ${
+                        volumeProcessingMode === 'off'
+                          ? 'rounded bg-white text-black'
+                          : 'text-white/50 hover:text-white'
+                      }`}
+                    >
+                      关闭
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setVolumeProcessingMode('robust-peak')}
+                      className={`py-1.5 transition ${
+                        volumeProcessingMode === 'robust-peak'
+                          ? 'rounded bg-white text-black'
+                          : 'text-white/50 hover:text-white'
+                      }`}
+                    >
+                      对齐峰值
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
 

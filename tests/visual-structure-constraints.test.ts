@@ -192,7 +192,7 @@ test('FloatingControls keeps mirror actions while separating secondary control g
   assert.match(source, /id="control-group-import"/);
   assert.match(source, /id="control-group-mirror-params"/);
   assert.match(source, /id="control-group-actions"/);
-  assert.match(source, />\s*导入与示例\s*</);
+  assert.match(source, /voiceprintSectionTitle:\s*"声纹输入"/);
   assert.match(source, />\s*镜像参数\s*</);
   assert.match(source, />\s*试听与导出\s*</);
   assert.match(source, />\s*绝对频率\s*</);

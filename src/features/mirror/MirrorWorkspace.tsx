@@ -110,7 +110,7 @@ export default function MirrorWorkspace({
       return;
     }
 
-    setVoiceprint(initialVoiceprint);
+    setVoiceprint(validateAndParseVoiceprint(initialVoiceprint as any));
     setSessionSource(source);
     setSessionTitle(sessionName ?? '来自分析');
   }, [initialVoiceprint, sessionName, source]);

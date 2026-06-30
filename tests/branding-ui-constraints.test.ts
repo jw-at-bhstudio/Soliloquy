@@ -141,7 +141,7 @@ test('mirror uses branded copy and typography constraints', async () => {
   assert.match(mirrorWorkspace, />\s*说明\s*</);
 
   assert.match(mirrorFloatingControls, />\s*镜像参数\s*</);
-  assert.match(mirrorFloatingControls, />\s*数据\s*</);
+  assert.match(mirrorFloatingControls, /voiceprintSectionTitle:\s*"声纹输入"/);
   assert.match(mirrorFloatingControls, />\s*轨道\s*</);
   assert.match(mirrorFloatingControls, />\s*形变\s*</);
   assert.match(mirrorFloatingControls, />\s*绘制\s*</);
