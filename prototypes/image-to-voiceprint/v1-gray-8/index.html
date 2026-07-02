@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>图片声纹提取 v1</title>
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <h1>图片声纹提取 v1</h1>
+      <p>一次最多 10 张图片。输出 8 阶灰度预览与 V1 voiceprint JSON。</p>
+      <input id="image-input" type="file" accept="image/*" multiple />
+      <label>
+        Sample Count
+        <input id="sample-count-input" type="number" value="467" min="8" max="4096" />
+      </label>
+      <label>
+        Image Height
+        <input id="image-height-input" type="number" value="256" min="8" max="4096" />
+      </label>
+      <label>
+        Duration
+        <input id="duration-input" type="number" value="10" min="1" max="9999" />
+      </label>
+      <div class="tool-list">
+        <button id="run-button" type="button">生成全部</button>
+        <button id="download-all-button" type="button">下载全部（逐个）</button>
+        <button id="clear-button" type="button">清空</button>
+      </div>
+      <pre id="output"></pre>
+      <div id="batch-list"></div>
+    </main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
