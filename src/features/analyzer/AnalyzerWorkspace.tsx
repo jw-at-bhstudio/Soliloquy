@@ -11,6 +11,7 @@ import Recorder from './components/Recorder';
 import TrackList from './components/TrackList';
 import { synthesizeAdditiveSynthesizer } from './utils/dsp';
 import { createAnalyzerJobRunner } from './utils/analyzerJobRunner';
+import { getImageVoiceprintToolUrl } from './utils/imageVoiceprintTool';
 import { VoiceprintData } from '../voiceprint/types';
 import { DEFAULT_TARGET_RMS, normalizeAudioSamples, normalizeAudioSamplesByRobustPeak } from '../../shared/audio/normalization';
 import {
@@ -51,7 +52,7 @@ export default function AnalyzerWorkspace() {
   const [numHarmonics, setNumHarmonics] = useState<number>(7);
   const [displayMode, setDisplayMode] = useState<'components' | 'additive' | 'both'>('both');
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [sourceType, setSourceType] = useState<'upload' | 'mic'>('upload');
+  const [sourceType, setSourceType] = useState<'upload' | 'mic' | 'image'>('upload');
   const [isPlayingOriginal, setIsPlayingOriginal] = useState<boolean>(false);
   const [isPlayingSynthesized, setIsPlayingSynthesized] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<number>(0);
@@ -364,7 +365,7 @@ export default function AnalyzerWorkspace() {
                 <span className="text-white">输入</span>
               </div>
 
-              <div className="grid grid-cols-2 rounded border border-white/10 bg-black p-0.5">
+              <div className="grid grid-cols-3 rounded border border-white/10 bg-black p-0.5">
                 <button
                   onClick={() => setSourceType('upload')}
                   className={`py-1.5 transition ${
@@ -386,6 +387,16 @@ export default function AnalyzerWorkspace() {
                 >
                   麦克风录音
                 </button>
+                <button
+                  onClick={() => setSourceType('image')}
+                  className={`py-1.5 transition ${
+                    sourceType === 'image'
+                      ? 'rounded bg-white text-black'
+                      : 'text-white/50 hover:text-white'
+                  }`}
+                >
+                  图片
+                </button>
               </div>
 
               {sourceType === 'upload' ? (
@@ -396,7 +407,7 @@ export default function AnalyzerWorkspace() {
                   isLoading={isLoading}
                   setIsLoading={setIsLoading}
                 />
-              ) : (
+              ) : sourceType === 'mic' ? (
                 <Recorder
                   onAudioRecorded={(audioData, sampleRate, fileName) =>
                     handleNewAudioLoaded(audioData, sampleRate, fileName, 'mic')
@@ -404,6 +415,21 @@ export default function AnalyzerWorkspace() {
                   isLoading={isLoading}
                   setIsLoading={setIsLoading}
                 />
+              ) : (
+                <div className="mt-3 space-y-3 rounded border border-white/10 bg-black p-3">
+                  <div className="text-white/60">
+                    跳转到 图片声纹提取 v1 工具页（一次最多 10 张，导出灰阶图与 JSON）。
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.location.href = getImageVoiceprintToolUrl();
+                    }}
+                    className="w-full rounded border border-white/10 bg-white px-3 py-2 text-black transition hover:bg-white/90"
+                  >
+                    打开 图片声纹提取 v1
+                  </button>
+                </div>
               )}
             </div>
 
