@@ -5,6 +5,13 @@ export interface LoadedImageCanvas {
   canvas: HTMLCanvasElement;
 }
 
+export interface PixelRgba {
+  red: number;
+  green: number;
+  blue: number;
+  alpha: number;
+}
+
 export async function loadImageData(
   file: File,
   width = 467,
@@ -43,6 +50,24 @@ export function extractGrayColumns(imageData: ImageData): number[][] {
       const gray = (0.299 * red + 0.587 * green + 0.114 * blue) / 255;
 
       columns[x]?.push(gray);
+    }
+  }
+
+  return columns;
+}
+
+export function extractRgbaColumns(imageData: ImageData): PixelRgba[][] {
+  const columns: PixelRgba[][] = Array.from({ length: imageData.width }, () => []);
+
+  for (let y = 0; y < imageData.height; y += 1) {
+    for (let x = 0; x < imageData.width; x += 1) {
+      const index = (y * imageData.width + x) * 4;
+      columns[x]?.push({
+        red: imageData.data[index] ?? 0,
+        green: imageData.data[index + 1] ?? 0,
+        blue: imageData.data[index + 2] ?? 0,
+        alpha: imageData.data[index + 3] ?? 0,
+      });
     }
   }
 

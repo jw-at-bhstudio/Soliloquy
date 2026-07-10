@@ -3,13 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>图片声纹提取 v1</title>
+    <title>图片声纹提取</title>
     <link rel="stylesheet" href="../styles.css" />
   </head>
   <body>
     <main class="shell">
-      <h1>图片声纹提取 v1</h1>
-      <p>一次最多 10 张图片。输出 8 阶灰度预览与 V1 voiceprint JSON。</p>
+      <h1>图片声纹提取</h1>
+      <div class="mode-switch" role="group" aria-label="模式">
+        <button id="mode-v4-button" type="button">v4（颜色 + 横向变化率）</button>
+        <button id="mode-v1-button" type="button">v1（灰度骨架）</button>
+      </div>
+      <p id="mode-summary">一次最多 10 张图片。</p>
+      <div id="how-it-works" class="how-it-works"></div>
       <input id="image-input" type="file" accept="image/*" multiple />
       <label>
         Sample Count
@@ -23,9 +28,31 @@
         Duration
         <input id="duration-input" type="number" value="10" min="1" max="9999" />
       </label>
+      <div id="v4-controls">
+        <label>
+          Color Influence
+          <input id="color-influence-input" type="number" value="0.35" step="0.05" min="0" max="0.8" />
+        </label>
+        <label>
+          Motion Influence
+          <input id="motion-influence-input" type="number" value="0.45" step="0.05" min="0" max="2" />
+        </label>
+        <label>
+          Motion Threshold
+          <input id="motion-threshold-input" type="number" value="0.03" step="0.01" min="0" max="1" />
+        </label>
+        <label>
+          Motion Smoothing Window
+          <input id="motion-smoothing-window-input" type="number" value="3" min="1" max="99" />
+        </label>
+        <label>
+          Motion Compression
+          <input id="motion-compression-input" type="number" value="0.18" step="0.01" min="0.0001" max="1" />
+        </label>
+      </div>
       <div class="tool-list">
         <button id="run-button" type="button">生成全部</button>
-        <button id="download-all-button" type="button">下载全部（逐个）</button>
+        <button id="download-all-button" type="button">下载全部</button>
         <button id="clear-button" type="button">清空</button>
       </div>
       <pre id="output"></pre>

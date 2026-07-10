@@ -3,13 +3,25 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useRef, useState } from "react";
-import { FolderOpen, Play, Square, Copy, Zap } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { Play, Square, Copy, Zap } from "lucide-react";
 import { RenderConfig, DeformationParams, DisplayMode, SideRenderMode } from "../types";
 import type { MirrorPresetRecord } from "../presets/types";
+import type {
+  MirrorImportMode,
+  MirrorImportState,
+  QuestionnaireImportCandidate,
+  VoiceprintImportCandidate,
+} from "../imports/types";
 import { sanitizeFrequencyRange } from "../utils/radiusMapping";
 import { createDefaultTrackSelection, sanitizeTrackSelection } from "../utils/trackSelection";
-import { generateDemoVoiceprint } from "../utils/generators";
+import { validateAndParseVoiceprint } from "../utils/generators";
+import { parseQuestionnairePresets } from "../presets/questionnaireAdapter";
+import { mergeMirrorImportEntries } from "../imports/matching";
+import { createDefaultMirrorImportState, switchMirrorImportMode } from "../imports/state";
+import { MirrorModeSwitch } from "./MirrorModeSwitch";
+import { PairedBatchImportPanel } from "./PairedBatchImportPanel";
+import { SingleFreeImportPanel } from "./SingleFreeImportPanel";
 
 type RuminationControlKey =
   | "ruminationFrequency"
@@ -100,7 +112,8 @@ interface FloatingControlsProps {
   deformParams: DeformationParams;
   onChangeDeformParams: (newParams: DeformationParams) => void;
   onImportJSON: (data: any) => void;
-  onImportQuestionnaireJSON: (data: unknown) => void;
+  onApplyQuestionnaireRecords: (records: MirrorPresetRecord[], sourceFileName: string | null) => void;
+  onClearQuestionnaireRecords: () => void;
   onLoadBuiltInDataset: () => void;
   presetRecords: MirrorPresetRecord[];
   selectedPresetIndex: number;
@@ -121,7 +134,8 @@ export function FloatingControls({
   deformParams,
   onChangeDeformParams,
   onImportJSON,
-  onImportQuestionnaireJSON,
+  onApplyQuestionnaireRecords,
+  onClearQuestionnaireRecords,
   onLoadBuiltInDataset,
   presetRecords,
   selectedPresetIndex,
@@ -135,9 +149,7 @@ export function FloatingControls({
   maxAvailableTracks,
   allowImport = true,
 }: FloatingControlsProps) {
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const questionnaireFileInputRef = useRef<HTMLInputElement | null>(null);
-  const [dragActive, setDragActive] = useState<boolean>(false);
+  const [importState, setImportState] = useState<MirrorImportState>(() => createDefaultMirrorImportState());
   const [copiedNotification, setCopiedNotification] = useState<boolean>(false);
   const [frequencyMinInput, setFrequencyMinInput] = useState<string>(String(config.frequencyMin ?? 80));
   const [frequencyMaxInput, setFrequencyMaxInput] = useState<string>(String(config.frequencyMax ?? 2000));
@@ -227,63 +239,210 @@ export function FloatingControls({
     setRadiusMaxInput(String(safeMax));
   };
 
-  const handleDownloadSample = () => {
-    const sample = generateDemoVoiceprint(4.0, 120);
-    const blob = new Blob([JSON.stringify(sample, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = "镜像示例.json";
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
-    URL.revokeObjectURL(url);
+  const handleModeChange = (nextMode: MirrorImportMode) => {
+    setImportState((current) => switchMirrorImportMode(current, nextMode));
   };
 
-  const parseAndImportFile = (file: File, onImport: (json: unknown) => void) => {
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const json = JSON.parse(event.target?.result as string);
-        onImport(json);
-      } catch (error: any) {
-        alert(`导入失败: ${error.message || "无效的 JSON 格式"}`);
-      }
+  const readJsonFromFile = (file: File): Promise<unknown> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          resolve(JSON.parse(String(event.target?.result ?? "")));
+        } catch (error) {
+          reject(error);
+        }
+      };
+      reader.onerror = () => reject(reader.error ?? new Error("无法读取文件"));
+      reader.readAsText(file);
+    });
+  };
+
+  const buildQuestionnaireCandidates = async (files: FileList): Promise<QuestionnaireImportCandidate[]> => {
+    const candidates: QuestionnaireImportCandidate[] = [];
+    for (const file of Array.from(files)) {
+      const payload = await readJsonFromFile(file);
+      const questionnaireRecords = parseQuestionnairePresets(payload);
+      candidates.push({ fileName: file.name, questionnaireRecords });
+    }
+    return candidates;
+  };
+
+  const buildVoiceprintCandidates = async (files: FileList): Promise<VoiceprintImportCandidate[]> => {
+    const candidates: VoiceprintImportCandidate[] = [];
+    for (const file of Array.from(files)) {
+      const payload = await readJsonFromFile(file);
+      const voiceprintData = validateAndParseVoiceprint(payload as any);
+      candidates.push({ fileName: file.name, voiceprintData });
+    }
+    return candidates;
+  };
+
+  const applyPairedImportMerge = (
+    current: MirrorImportState,
+    addedQuestionnaires: QuestionnaireImportCandidate[],
+    addedVoiceprints: VoiceprintImportCandidate[],
+  ): MirrorImportState => {
+    if (current.mode !== "paired-batch") {
+      return current;
+    }
+
+    const existingQuestionnaires: QuestionnaireImportCandidate[] = current.entries
+      .filter((entry) => entry.questionnaireFileName)
+      .map((entry) => ({
+        fileName: entry.questionnaireFileName as string,
+        questionnaireRecords: entry.questionnaireRecords,
+      }));
+
+    const existingVoiceprints: VoiceprintImportCandidate[] = current.entries
+      .filter((entry) => entry.voiceprintFileName && entry.voiceprintData)
+      .map((entry) => ({
+        fileName: entry.voiceprintFileName as string,
+        voiceprintData: entry.voiceprintData as any,
+      }));
+
+    const entries = mergeMirrorImportEntries(
+      [...existingQuestionnaires, ...addedQuestionnaires],
+      [...existingVoiceprints, ...addedVoiceprints],
+    );
+
+    const retainedSelectedKey =
+      current.selectedEntryKey && entries.some((entry) => entry.key === current.selectedEntryKey)
+        ? current.selectedEntryKey
+        : null;
+
+    return {
+      ...current,
+      entries,
+      selectedEntryKey: retainedSelectedKey,
     };
-    reader.readAsText(file);
   };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (files && files.length > 0) {
-      parseAndImportFile(files[0], onImportJSON);
-    }
-  };
-
-  const handleQuestionnaireFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (files && files.length > 0) {
-      parseAndImportFile(files[0], onImportQuestionnaireJSON);
-    }
-  };
-
-  const handleDrag = (event: React.DragEvent) => {
-    event.preventDefault();
-    event.stopPropagation();
-    if (event.type === "dragenter" || event.type === "dragover") {
-      setDragActive(true);
+  const handleImportPairedQuestionnaires = async (files: FileList | null) => {
+    if (!files || files.length === 0) {
       return;
     }
-    setDragActive(false);
+    try {
+      const candidates = await buildQuestionnaireCandidates(files);
+      setImportState((current) => applyPairedImportMerge(current, candidates, []));
+    } catch (error: any) {
+      alert(`导入失败: ${error?.message ?? "无效的 JSON 格式"}`);
+    }
   };
 
-  const handleDrop = (event: React.DragEvent) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setDragActive(false);
-    if (event.dataTransfer.files && event.dataTransfer.files[0]) {
-      parseAndImportFile(event.dataTransfer.files[0], onImportJSON);
+  const handleImportPairedVoiceprints = async (files: FileList | null) => {
+    if (!files || files.length === 0) {
+      return;
     }
+    try {
+      const candidates = await buildVoiceprintCandidates(files);
+      setImportState((current) => applyPairedImportMerge(current, [], candidates));
+    } catch (error: any) {
+      alert(`导入失败: ${error?.message ?? "无效的 JSON 格式"}`);
+    }
+  };
+
+  const handleSelectPairedEntry = (key: string) => {
+    setImportState((current) => {
+      if (current.mode !== "paired-batch") {
+        return current;
+      }
+
+      const entry = current.entries.find((item) => item.key === key);
+
+      if (entry) {
+        if (entry.voiceprintData) {
+          onImportJSON(entry.voiceprintData);
+        }
+
+        if (entry.voiceprintData && entry.questionnaireRecords.length === 0) {
+          onClearQuestionnaireRecords();
+        }
+
+        if (entry.voiceprintData && entry.questionnaireRecords.length > 0) {
+          onApplyQuestionnaireRecords(entry.questionnaireRecords, entry.questionnaireFileName);
+        }
+      }
+
+      return {
+        ...current,
+        selectedEntryKey: key,
+      };
+    });
+  };
+
+  const handleImportSingleVoiceprint = async (file: File | null) => {
+    if (!file) {
+      return;
+    }
+    try {
+      const payload = await readJsonFromFile(file);
+      const parsed = validateAndParseVoiceprint(payload as any);
+      setImportState((current) =>
+        current.mode === "single-free"
+          ? {
+              ...current,
+              voiceprintFileName: file.name,
+              voiceprintData: parsed,
+            }
+          : current,
+      );
+      onImportJSON(parsed);
+    } catch (error: any) {
+      alert(`导入失败: ${error?.message ?? "无效的 JSON 格式"}`);
+    }
+  };
+
+  const handleImportSingleQuestionnaire = async (file: File | null) => {
+    if (!file) {
+      return;
+    }
+    try {
+      const payload = await readJsonFromFile(file);
+      const records = parseQuestionnairePresets(payload);
+      setImportState((current) =>
+        current.mode === "single-free"
+          ? {
+              ...current,
+              questionnaireFileName: file.name,
+              questionnaireRecords: records,
+            }
+          : current,
+      );
+
+      if (records.length > 0) {
+        onApplyQuestionnaireRecords(records, file.name);
+      } else {
+        onClearQuestionnaireRecords();
+      }
+    } catch (error: any) {
+      alert(`导入失败: ${error?.message ?? "无效的 JSON 格式"}`);
+    }
+  };
+
+  const handleClearSingleVoiceprint = () => {
+    setImportState((current) =>
+      current.mode === "single-free"
+        ? {
+            ...current,
+            voiceprintFileName: null,
+            voiceprintData: null,
+          }
+        : current,
+    );
+  };
+
+  const handleClearSingleQuestionnaire = () => {
+    setImportState((current) =>
+      current.mode === "single-free"
+        ? {
+            ...current,
+            questionnaireFileName: null,
+            questionnaireRecords: [],
+          }
+        : current,
+    );
+    onClearQuestionnaireRecords();
   };
 
   const handleCopyTrigger = () => {
@@ -306,50 +465,27 @@ export function FloatingControls({
           id="control-group-import"
         >
           <div className="mb-2 text-white/70" style={{ fontWeight: 400 }}>
-            {MIRROR_INPUT_COPY.voiceprintSectionTitle}
+            导入模式
           </div>
-          <div className="mb-2 text-white/35" style={{ fontWeight: 400 }}>
-            {MIRROR_INPUT_COPY.voiceprintSectionDescription}
-          </div>
-
-          <div
-            onDragEnter={handleDrag}
-            onDragOver={handleDrag}
-            onDragLeave={handleDrag}
-            onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-            className={`flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded border border-dashed p-4 text-center transition-colors ${
-              dragActive
-                ? "border-white bg-white/[0.06] text-white"
-                : "border-white/10 bg-black text-white/55 hover:border-white/30 hover:bg-white/[0.03] hover:text-white/80"
-            }`}
-            id="dropzone-area"
-          >
-            <FolderOpen className="h-5 w-5" />
-            <div>
-              {MIRROR_INPUT_COPY.voiceprintImportButton}
-            </div>
-            <div className="text-white/35">点击或拖拽文件</div>
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileChange}
-              accept=".json"
-              className="hidden"
-              id="json-file-picker"
+          <MirrorModeSwitch mode={importState.mode} onChange={handleModeChange} />
+          {importState.mode === "paired-batch" ? (
+            <PairedBatchImportPanel
+              entries={importState.entries}
+              selectedEntryKey={importState.selectedEntryKey}
+              onImportQuestionnaires={handleImportPairedQuestionnaires}
+              onImportVoiceprints={handleImportPairedVoiceprints}
+              onSelectEntry={handleSelectPairedEntry}
             />
-          </div>
-
-          <div className="mt-2 flex items-center justify-between">
-            <span className="text-white/35">没有数据？</span>
-            <button
-              onClick={handleDownloadSample}
-              className="cursor-pointer text-white/55 underline transition-colors hover:text-white"
-              id="btn-sample-download"
-            >
-              {MIRROR_INPUT_COPY.voiceprintSampleButton}
-            </button>
-          </div>
+          ) : (
+            <SingleFreeImportPanel
+              voiceprintFileName={importState.voiceprintFileName}
+              questionnaireFileName={importState.questionnaireFileName}
+              onImportVoiceprint={handleImportSingleVoiceprint}
+              onImportQuestionnaire={handleImportSingleQuestionnaire}
+              onClearVoiceprint={handleClearSingleVoiceprint}
+              onClearQuestionnaire={handleClearSingleQuestionnaire}
+            />
+          )}
         </section>
       )}
 
@@ -360,22 +496,6 @@ export function FloatingControls({
         <div className="mb-2 text-white/35" style={{ fontWeight: 400 }}>
           {MIRROR_INPUT_COPY.questionnaireSectionDescription}
         </div>
-
-        <button
-          onClick={() => questionnaireFileInputRef.current?.click()}
-          className="flex w-full cursor-pointer items-center justify-center gap-2 rounded border border-white/10 bg-black px-3 py-2.5 text-white/70 transition-colors hover:border-white/30 hover:text-white"
-          type="button"
-        >
-          <FolderOpen className="h-4 w-4" />
-          {MIRROR_INPUT_COPY.questionnaireImportButton}
-        </button>
-        <input
-          type="file"
-          ref={questionnaireFileInputRef}
-          onChange={handleQuestionnaireFileChange}
-          accept=".json"
-          className="hidden"
-        />
 
         <div className="mt-3 text-white/35" style={{ fontWeight: 400 }}>
           {MIRROR_INPUT_COPY.compareModeLabel}

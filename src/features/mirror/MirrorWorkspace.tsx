@@ -24,7 +24,6 @@ import { generateDemoVoiceprint, validateAndParseVoiceprint } from './utils/gene
 import { mapPresetToMirrorState } from './presets/mapping';
 import { loadBuiltInSampleDataset } from './presets/sampleDataset';
 import type { MirrorPresetRecord } from './presets/types';
-import { parseQuestionnairePresets } from './presets/questionnaireAdapter';
 import { sanitizeFrequencyRange } from './utils/radiusMapping';
 import { createDefaultTrackSelection, sanitizeTrackSelection } from './utils/trackSelection';
 import {
@@ -226,8 +225,10 @@ export default function MirrorWorkspace({
     applyPresetRecord(presetRecords[nextIndex], nextIndex);
   };
 
-  const handleLoadBuiltInDataset = () => {
-    const records = loadBuiltInSampleDataset();
+  const handleApplyQuestionnaireRecords = (
+    records: MirrorPresetRecord[],
+    _sourceFileName: string | null = null,
+  ) => {
     setPresetRecords(records);
 
     if (records[0]) {
@@ -239,21 +240,16 @@ export default function MirrorWorkspace({
     }
   };
 
-  const handleImportQuestionnaireJSON = (fileObject: unknown) => {
-    try {
-      const records = parseQuestionnairePresets(fileObject);
-      setPresetRecords(records);
+  const handleClearQuestionnaireRecords = () => {
+    setPresetRecords([]);
+    setSelectedPresetIndex(-1);
+    setSelectedPresetId(null);
+    setPresetSourceLabel(null);
+  };
 
-      if (records[0]) {
-        applyPresetRecord(records[0], 0);
-      } else {
-        setSelectedPresetIndex(-1);
-        setSelectedPresetId(null);
-        setPresetSourceLabel(null);
-      }
-    } catch (error: any) {
-      alert(`问卷预设加载失败: ${error.message}`);
-    }
+  const handleLoadBuiltInDataset = () => {
+    const records = loadBuiltInSampleDataset();
+    handleApplyQuestionnaireRecords(records);
   };
 
   const handleCopySVG = () => {
@@ -357,7 +353,8 @@ export default function MirrorWorkspace({
             deformParams={deformParams}
             onChangeDeformParams={setDeformParams}
             onImportJSON={handleImportJSON}
-            onImportQuestionnaireJSON={handleImportQuestionnaireJSON}
+            onApplyQuestionnaireRecords={handleApplyQuestionnaireRecords}
+            onClearQuestionnaireRecords={handleClearQuestionnaireRecords}
             onLoadBuiltInDataset={handleLoadBuiltInDataset}
             presetRecords={presetRecords}
             selectedPresetIndex={selectedPresetIndex}

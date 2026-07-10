@@ -418,16 +418,16 @@ export default function AnalyzerWorkspace() {
               ) : (
                 <div className="mt-3 space-y-3 rounded border border-white/10 bg-black p-3">
                   <div className="text-white/60">
-                    跳转到 图片声纹提取 v1 工具页（一次最多 10 张，导出灰阶图与 JSON）。
+                    跳转到 图片声纹提取 工具页（默认 v4，可切换 v1；一次最多 10 张，导出灰阶图与 JSON）。
                   </div>
                   <button
                     type="button"
                     onClick={() => {
-                      window.location.href = getImageVoiceprintToolUrl();
+                      window.location.href = getImageVoiceprintToolUrl({ mode: 'v4' });
                     }}
                     className="w-full rounded border border-white/10 bg-white px-3 py-2 text-black transition hover:bg-white/90"
                   >
-                    打开 图片声纹提取 v1
+                    打开 图片声纹提取（v4）
                   </button>
                 </div>
               )}

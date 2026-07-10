@@ -4,3 +4,7 @@ dist/
 Thumbs.db
 *.log
 .netlify/
+sound-samples/
+prototypes/data/
+prototypes/image-to-voiceprint/test-image/
+prototypes/image-to-voiceprint/test-JSON/

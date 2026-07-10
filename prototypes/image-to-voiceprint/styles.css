@@ -103,7 +103,65 @@ body {
   background: #0b0f14;
 }
 
+.batch-debug-grid {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.debug-panel {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.debug-panel h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: #c9d1d9;
+}
+
+.debug-panel pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 240px;
+  overflow: auto;
+}
+
 .batch-error {
   color: #ff7b72;
   margin-bottom: 10px;
+}
+
+.mode-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0 12px;
+}
+
+.mode-switch button {
+  padding: 12px 14px;
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  background: #0d1117;
+  color: inherit;
+  cursor: pointer;
+}
+
+.mode-switch button.is-active {
+  background: rgba(255, 255, 255, 0.92);
+  color: #0d1117;
+  border-color: rgba(255, 255, 255, 0.92);
+}
+
+.how-it-works {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
